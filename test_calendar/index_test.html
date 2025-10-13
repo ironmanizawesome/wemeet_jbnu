@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>귀농 청년 서비스</title>
+  <link rel="stylesheet" href="index_test.css" />
+</head>
+<body>
+  <div class="layout">
+    <!-- 사이드바 -->
+    <aside class="sidebar" aria-label="주 메뉴">
+      <div class="brand">
+        <span class="logo">🌱</span>
+        <span class="brand-text">귀농 청년</span>
+      </div>
+      <nav class="menu" id="sidebar-menu">
+        <a class="menu-item" href="#recommend" data-target="page-recommend">
+          <span class="icon">🧭</span><span class="label">맞춤 작물 추천</span>
+        </a>
+        <a class="menu-item active" href="#scheduler" data-target="page-scheduler">
+          <span class="icon">📅</span><span class="label">농사일정 관리</span>
+        </a>
+        <a class="menu-item" href="#policy" data-target="page-policy">
+          <span class="icon">🏛️</span><span class="label">지원 정책 정보</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer"><small>© 2025 Prototype</small></div>
+      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="사이드바 접기/펼치기">☰</button>
+    </aside>
+
+    <!-- 메인 -->
+    <div class="main">
+      <header class="container header">
+        <h1>농사일정 관리</h1>
+        <p class="subtitle">정식 시작 정보 입력 → 관리 일정 자동 생성 → 관찰·피드백</p>
+      </header>
+
+      <main class="container content">
+        <section id="page-scheduler" class="page visible">
+          <!-- 정식 시작 정보 -->
+          <section class="card">
+            <h2>정식 시작 정보</h2>
+            <form id="plan-form" class="grid-3" novalidate>
+              <div class="field">
+                <label for="crop">작물명 <span class="req">*</span></label>
+                <input id="crop" name="crop" type="text" placeholder="예: 토마토" required />
+              </div>
+
+              <div class="field">
+                <label for="start_date">정식 시작일 <span class="req">*</span></label>
+                <input id="start_date" name="start_date" type="date" required />
+              </div>
+
+              <div class="field">
+                <label for="method">정식 방식 <span class="req">*</span></label>
+                <select id="method" name="method" required>
+                  <option value="seed">직파(파종)</option>
+                  <option value="transplant" selected>육묘 정식</option>
+                  <option value="grafting">접목 정식</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="environment">재배 환경 <span class="req">*</span></label>
+                <select id="environment" name="environment" required>
+                  <option value="open">노지</option>
+                  <option value="greenhouse" selected>비닐하우스/시설</option>
+                  <option value="hydroponic">수경</option>
+                </select>
+                <small class="hint">환경에 따라 관수·병해 관리 주기가 달라집니다.</small>
+              </div>
+
+              <div class="field">
+                <label for="area">재배 면적(선택)</label>
+                <div class="input-with-unit">
+                  <input id="area" type="number" min="0" step="0.01" placeholder="예: 0.3" />
+                  <span class="unit">ha</span>
+                </div>
+              </div>
+
+              <div class="field">
+                <label for="variety">품종(선택)</label>
+                <input id="variety" type="text" placeholder="예: 시그마토 F1" />
+              </div>
+
+              <div class="field span-3">
+                <label for="notes">특이 조건(선택)</label>
+                <textarea id="notes" rows="2" placeholder="예: 저녁 작업 위주, 관수 자동 가능, 친환경 방제 우선"></textarea>
+              </div>
+
+              <div class="actions span-3">
+                <button type="submit" class="btn-primary">일정 생성</button>
+                <button type="reset" class="btn-ghost">초기화</button>
+                <span id="plan-error" class="error" hidden></span>
+              </div>
+            </form>
+          </section>
+
+          <!-- 생성된 일정 & 관찰/피드백 -->
+          <section class="card">
+            <h2>관리 일정</h2>
+            <div id="plan-meta" class="muted"></div>
+            <div id="timeline" class="timeline">
+              <p class="muted">정식 정보를 입력하고 “일정 생성”을 눌러주세요.</p>
+            </div>
+          </section>
+        </section>
+
+        <!-- 나머지 페이지는 필요 시 구현 -->
+        <section id="page-recommend" class="page"></section>
+        <section id="page-policy" class="page"></section>
+      </main>
+
+      <footer class="container footer">
+        <small>© 2025 귀농청년맞춤 에이전트 · 프로토타입</small>
+      </footer>
+    </div>
+  </div>
+
+  <script src="app_test.js"></script>
+</body>
+</html>
