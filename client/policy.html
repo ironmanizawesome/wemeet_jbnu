@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>청년 귀농 지원 정책</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+h1 { text-align: center; color: #2d6a4f; }
+.category-btn { display: inline-block; margin: 10px; padding: 10px 20px; background: #40916c; color: white; border: none; border-radius: 5px; cursor: pointer; }
+.category-btn:hover { background: #2d6a4f; }
+.policy-card { border: 1px solid #ccc; border-radius: 5px; padding: 15px; margin: 10px 0; background: white; cursor: pointer; }
+.policy-description { font-size: 0.9em; color: #555; }
+.policy-source { font-size: 0.8em; color: #888; margin-top: 5px; }
+.modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); }
+.modal-content { background: white; margin: 10% auto; padding: 20px; width: 80%; border-radius: 5px; position: relative; }
+.close { position: absolute; top: 10px; right: 15px; font-size: 1.5em; cursor: pointer; }
+.modal a { color: #40916c; }
+#sub-category-container { margin-top: 20px; }
+#region-selection { text-align:center; margin-bottom:15px; }
+#selected-region-tag { display:none; margin-left:10px; color:white; background:#2d6a4f; padding:5px 10px; border-radius:15px; }
+</style>
+</head>
+<body>
+
+<h1>청년 귀농 지원 정책</h1>
+
+<div id="region-selection">
+<label for="region-select"><strong>지역 선택:</strong></label>
+<select id="region-select" onchange="selectRegion()">
+<option value="">전체 지역</option>
+<option value="seoul">서울특별시</option>
+<option value="jeonnam">전라남도</option>
+<option value="jeonbuk">전라북도</option>
+<option value="busan">부산광역시</option>
+<option value="gwangju">광주광역시</option>
+<option value="ulsan">울산광역시</option>
+<option value="daejeon">대전광역시</option>
+<option value="daegu">대구광역시</option>
+</select>
+<span id="selected-region-tag"></span>
+</div>
+
+<div id="category-selection" style="display:none;">
+<button class="category-btn" onclick="showCategory('income')">소득·정착 지원</button>
+<button class="category-btn" onclick="showCategory('education')">교육·컨설팅 지원</button>
+<button class="category-btn" onclick="showCategory('startup')">기술/창업 지원</button>
+</div>
+
+<div id="policy-container"></div>
+<div id="sub-category-container" style="display:none;"></div>
+
+<div id="modal" class="modal">
+<div class="modal-content">
+<span class="close" onclick="closeModal()">&times;</span>
+<div id="modal-body"></div>
+</div>
+</div>
+
+<script>
+// 지역 선택 후 카테고리 표시
+function selectRegion() {
+  const regionSelect = document.getElementById('region-select');
+  const categorySelection = document.getElementById('category-selection');
+  const selectedTag = document.getElementById('selected-region-tag');
+  const selectedValue = regionSelect.value;
+
+  if (selectedValue) {
+    categorySelection.style.display = 'block';
+    selectedTag.style.display = 'inline-block';
+    selectedTag.textContent = regionSelect.options[regionSelect.selectedIndex].text;
+  } else {
+    categorySelection.style.display = 'none';
+    selectedTag.style.display = 'none';
+    selectedTag.textContent = '';
+  }
+
+  document.getElementById('policy-container').innerHTML = '';
+  const subContainer = document.getElementById('sub-category-container');
+  subContainer.style.display = 'none';
+  subContainer.innerHTML = '';
+}
+
+// ------------------ 전라북도 기존 정책 ------------------
+const policies = {
+      income: [
+        {
+          title: "귀농 농업창업 및 주택구입 지원사업",
+          description: "지원자격: 이주기한:전입일로부터 만 5년이 경과하지 않은 세대주로서 농촌에 가족과 함께 실제 거주하면서 농업 종사하고 있는 자<br>거주기간:농촌지역 전입일을 기준으로 농촌지역 이주 직전에 1년 이상 지속적으로 농촌 외의 지역에서 거주한 자<br><br>",
+          source: "출처: 농림축산식품부",
+          details: "청년 귀농 정착 지원사업은 초기 농업 정착과 창업을 돕는 프로그램입니다. 신청 방법과 자세한 내용은 아래 링크를 참고하세요.",
+          link: [
+            "https://www.greendaero.go.kr/svc/rfph/cpif/front/home.do"
+          ]
+        }
+      ],
+      education: [
+        {
+          title: "귀농 준비 교육",
+          description: "농업 기술, 창업 등 귀농 준비를 위한 교육 과정 제공",
+          source: "출처: 지자체 농업기술센터",
+          subcategories: [
+            {
+              name: "농업교육포털",
+              details: "예비농, 신규농, 성장농, 전문농 같이 다양한 농업인들을 위한 온,오프라인 교육과정",
+              link: "https://agriedu.net/"
+            },
+            {
+              name: "스마트팜 청년창업 보육센터",
+              details: "스마트팜 영농기술을 배우고자 희망하는 청년 모집<br>만 18세 이상~ 만 39세 이하의 대한민국 국적 소지자<br><br>입문(2개월), 교육형 실습(6개월), 경영형 실습(12개월)=>20개월 과정<br><br>(전북 김제) 딸기, 토마토, 오이, 엽채류<br><br>(전남 고흥) : 딸기, 토마토, 멜론, 아열대작(레몬 등)<br><br>(경북 상주) 딸기, 토마토, 오이, 멜론<br><br>(경남 밀양) 딸기, 토마토, 파프리카, 가지<br><br>*지정된 교육품목 외 스마트팜 시설원예 분야의 기초 교육은 가능하나, 입문교육(기초)에 한정하여 실시",
+              link: "https://www.smartfarmkorea.net/edu/pnbsns/all.do?menuId=M11020401"
+            },
+            {
+              name: "청년귀농 오프라인 장기교육",
+              details: "귀농 실행 전 농장〮숙박 등 교육시설을 갖춘 실습장에서 4~6개월간 지내면서 작목의 생산부터 판매까지 전과정 실습<br>*강사비, 숙박비 등을 지원하며 직접교육비의 10%는 교육생 부담(60~90만원 수준/교육기관별 상이 )<br>",
+              link: "https://www.greendaero.go.kr/svc/rfph/edc/offline/front/intensificationIntro2.do"
+            }
+          ]
+        }
+      ],
+      startup: [
+        {
+          title: "청년 농업 창업 지원금",
+          description: "농업 창업 초기 비용을 지원하여 사업 안정성을 높입니다.",
+          source: "출처: 농림축산식품부",
+          details: "청년 농업 창업 지원금은 창업 초기 비용 부담을 줄여 안정적인 농업 사업을 시작할 수 있도록 돕습니다.",
+          link: "https://www.rda.go.kr"
+        }
+      ]
+};
+
+// ------------------ 다른 지역 예시 구조 ------------------
+const policiesByRegion = {
+  jeonnam: {
+    income: [{ title: "소득 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }],
+    education: [{ title: "교육 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }],
+    startup: [{ title: "창업 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }]
+  },
+  gwangju: {
+    income: [{ title: "소득 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }],
+    education: [{ title: "교육 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }],
+    startup: [{ title: "창업 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }]
+  }
+  // 나머지 지역도 동일 형식으로 추가 가능
+};
+
+// ------------------ 카테고리 선택 시 정책 표시 ------------------
+function showCategory(category) {
+  const regionSelect = document.getElementById('region-select');
+  const region = regionSelect.value;
+  const container = document.getElementById('policy-container');
+  container.innerHTML = '';
+  document.getElementById('sub-category-container').style.display = 'none';
+  document.getElementById('sub-category-container').innerHTML = '';
+
+  if(region === "jeonbuk") {
+    // 전라북도 기존 정책
+    policies[category].forEach(policy => {
+      const card = document.createElement('div');
+      card.className = 'policy-card';
+      card.innerHTML = `<h2>${policy.title}</h2><p class="policy-description">${policy.description}</p><p class="policy-source">${policy.source}</p>`;
+      card.onclick = () => { if(policy.subcategories) showSubcategories(policy.subcategories); else openModal(policy); };
+      container.appendChild(card);
+    });
+  } else if(policiesByRegion[region]) {
+    // 다른 지역 예시
+    policiesByRegion[region][category].forEach(policy => {
+      const card = document.createElement('div');
+      card.className = 'policy-card';
+      card.innerHTML = `<h2>${policy.title}</h2><p class="policy-description">${policy.description}</p><p class="policy-source"><a href="${policy.link[0]}" target="_blank">${policy.link[0]}</a></p>`;
+      container.appendChild(card);
+    });
+  }
+}
+
+// ------------------ 하위카테고리 및 모달 ------------------
+function showSubcategories(subcategories) {
+  const subContainer = document.getElementById('sub-category-container');
+  subContainer.innerHTML = '';
+  subContainer.style.display = 'block';
+  subcategories.forEach(sub => {
+    const btn = document.createElement('button');
+    btn.className = 'category-btn';
+    btn.textContent = sub.name;
+    btn.onclick = () => openModal(sub);
+    subContainer.appendChild(btn);
+  });
+}
+
+function openModal(policy) {
+  const modal = document.getElementById('modal');
+  const body = document.getElementById('modal-body');
+  let links = '';
+  if(Array.isArray(policy.link)) links = policy.link.map(url => `<a href="${url}" target="_blank">${url}</a>`).join('<br>');
+  else if(policy.link) links = `<a href="${policy.link}" target="_blank">${policy.link}</a>`;
+  body.innerHTML = `<h2>${policy.name || policy.title}</h2><p>${policy.details}</p><div>${links}</div>`;
+  modal.style.display = 'block';
+}
+
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
+</script>
+</body>
+</html>
