@@ -13,11 +13,12 @@
 """
 
 from langchain.agents import create_agent
-from langgraph.checkpoint.memory import InMemorySaver  
+from langgraph.checkpoint.memory import InMemorySaver
 import os
 
-# 실제로는: os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
-os.environ["OPENAI_API_KEY"] = "OPENAI_API_KEY_PLACEHOLDER"
+# Expect API key to be provided via environment; do not hardcode secrets
+if not os.getenv("OPENAI_API_KEY"):
+    raise RuntimeError("Set OPENAI_API_KEY in your environment before running this example.")
 
 
 # 1) 에이전트가 사용할 "도구(파이썬 함수)" 정의

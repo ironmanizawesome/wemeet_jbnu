@@ -20,7 +20,9 @@ import os
 # (학습용) API 키를 코드에서 설정하고 있습니다.
 # 실제로는 아래와 같이 환경변수에서 읽는 방식을 쓰세요.
 # os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
-os.environ["OPENAI_API_KEY"] = "OPENAI_API_KEY_PLACEHOLDER"
+    # Expect API key to be provided via environment; do not hardcode secrets
+if not os.getenv("OPENAI_API_KEY"):
+    raise RuntimeError("Set OPENAI_API_KEY in your environment before running this example.")
 
 # 참고 자료: https://docs.langchain.com/oss/python/langchain/quickstart
 

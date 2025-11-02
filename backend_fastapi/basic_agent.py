@@ -1,7 +1,13 @@
 from langchain.agents import create_agent
-from langgraph.checkpoint.memory import InMemorySaver  
+from langgraph.checkpoint.memory import InMemorySaver
 import os
-os.environ["OPENAI_API_KEY"] = "OPENAI_API_KEY_PLACEHOLDER"
+
+# Read OpenAI API key from environment. Do NOT hardcode secrets in source.
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise RuntimeError(
+        "Missing OPENAI_API_KEY. Set it in your environment (e.g., export OPENAI_API_KEY=...)"
+    )
 
 
 def cafe_info(name: str) -> str:

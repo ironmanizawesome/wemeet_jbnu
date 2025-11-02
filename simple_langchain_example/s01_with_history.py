@@ -14,7 +14,8 @@ import os
 
 # 학습 편의를 위해 코드에서 설정했지만, 실제로는 환경변수를 사용하세요.
 # os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
-os.environ["OPENAI_API_KEY"] = "OPENAI_API_KEY_PLACEHOLDER"
+if not os.getenv("OPENAI_API_KEY"):
+    raise RuntimeError("Set OPENAI_API_KEY in your environment before running this example.")
 
 
 # 1) 메모리를 가진 에이전트 만들기
