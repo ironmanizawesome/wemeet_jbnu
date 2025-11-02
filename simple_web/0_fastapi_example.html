@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>FastAPI 예제 (아주 단순)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+</head>
+<body>
+  <h1>FastAPI 예제</h1>
+
+  <p>자세한 설명은 문서: <a href="./0_fastapi_example.md" target="_blank">0_fastapi_example.md</a></p>
+
+  <label>백엔드 주소: <input id="baseUrl" value="http://127.0.0.1:8000"></label>
+  <br><br>
+
+  <button id="btnRoot">GET / 호출</button>
+  <pre id="outRoot"></pre>
+
+  <hr>
+
+  <label>아이템 ID: <input id="itemId" type="number" value="1"></label>
+  <br>
+  <label>q(선택): <input id="q"></label>
+  <br><br>
+
+  <button id="btnItem">GET /items/{id}</button>
+  <pre id="outItem"></pre>
+
+  <script>
+    function getBase(){ return document.getElementById('baseUrl').value.replace(/\/+$/, ''); }
+
+    document.getElementById('btnRoot').onclick = function(){
+      var url = getBase() + '/';
+      fetch(url).then(function(r){return r.json();}).then(function(d){
+        document.getElementById('outRoot').textContent = JSON.stringify(d, null, 2);
+      }).catch(function(e){
+        document.getElementById('outRoot').textContent = '에러: ' + e;
+      });
+    };
+
+    document.getElementById('btnItem').onclick = function(){
+      var id = document.getElementById('itemId').value;
+      var q = document.getElementById('q').value;
+      var url = getBase() + '/items/' + id + (q ? ('?q=' + encodeURIComponent(q)) : '');
+      fetch(url).then(function(r){return r.json();}).then(function(d){
+        document.getElementById('outItem').textContent = JSON.stringify(d, null, 2);
+      }).catch(function(e){
+        document.getElementById('outItem').textContent = '에러: ' + e;
+      });
+    };
+  </script>
+</body>
+</html>

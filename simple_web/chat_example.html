@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<!--
+  이 파일은 "가장 쉬운" 웹 채팅 예제입니다.
+  - 목표: 버튼(=폼 제출)을 눌렀을 때, 내 메시지를 서버(FastAPI)로 보내고,
+          서버의 응답을 화면에 추가로 보여주기
+  - 준비: FastAPI 서버가 켜져 있어야 합니다.
+        (예: 프로젝트 루트에서 `uvicorn backend_fastapi.main:app --reload`)
+  - 서버 주소: 아래 자바스크립트의 BASE_URL(기본: http://127.0.0.1:8000)
+  - 사용하는 백엔드 주소(엔드포인트):
+        /langchain_basic_agent/{thread_id}/{user_message}
+    예) http://127.0.0.1:8000/langchain_basic_agent/1/안녕하세요
+-->
+<html>
+<head>
+    <title>간단한 채팅창</title>
+</head>
+<body>
+    <h1>채팅방</h1>
+    
+    <!-- 채팅 메시지를 보여주는 영역 -->
+    <h2>메시지 목록</h2>
+    <!--
+      이 <div> 안에 대화가 차곡차곡 쌓입니다.
+      - 처음에는 AI의 인사 한 줄이 들어있습니다.
+      - 내가 메시지를 보내면 "나:" 한 줄이 추가되고,
+        서버 응답이 오면 "AI:" 한 줄이 추가됩니다.
+    -->
+    <div id="messages">
+        <p><strong>AI:</strong> 안녕하세요!</p>
+    </div>
+    
+    <hr>
+    
+    <!-- 메시지를 입력하고 보내는 영역 -->
+    <h2>메시지 보내기</h2>
+    <!--
+      form(폼)은 "입력한 값을 제출"하는 용도입니다.
+      - 기본 동작: 제출(Submit)을 하면 페이지가 새로고침됩니다.
+      - 우리는 자바스크립트로 서버에 요청을 보낼 것이므로,
+        기본 동작(새로고침)을 막고(fetch 사용), 화면에 결과만 추가할 겁니다.
+    -->
+    <form id="chatForm">
+        <!--
+          이름 입력칸은 화면 표시용입니다(서버로 보내지 않음).
+          정말 이름을 보내고 싶다면 JS에서 값을 읽어 함께 전송하면 됩니다.
+        -->
+        <label>이름:</label>
+        <input type="text" placeholder="이름을 입력하세요">
+        <br><br>
+        
+        <!-- 실제로 서버에 보낼 문장(메시지)을 입력하는 칸입니다. -->
+        <label>메시지:</label>
+        <input id="messageInput" type="text" placeholder="메시지를 입력하세요" size="50">
+        <br><br>
+        
+        <!-- 제출 버튼을 누르면 자바스크립트가 실행됩니다. -->
+        <button type="submit">보내기</button>
+    </form>
+    <script>
+        // [기본 설정]
+        // - BASE_URL: 백엔드 서버 주소입니다. 보통 내 컴퓨터에서 실행하면 127.0.0.1:8000 입니다.
+        // - THREAD_ID: 대화의 번호 같은 것입니다. 같은 번호를 쓰면 대화가 이어집니다.
+        var BASE_URL = 'http://127.0.0.1:8000';
+        var THREAD_ID = '1';
+
+        // [화면의 요소들 가져오기]
+        // - 폼(form), 입력칸(input), 메시지 목록 영역(div)을 변수에 담아둡니다.
+        var form = document.getElementById('chatForm');
+        var input = document.getElementById('messageInput');
+        var messages = document.getElementById('messages');
+
+        form.addEventListener('submit', function (e) {
+            // 폼의 기본 제출 동작(페이지 새로고침)을 막습니다.
+            e.preventDefault();
+
+            // 사용자가 입력한 텍스트를 읽습니다.
+            var userText = input.value;
+            // 아무 것도 입력하지 않았다면 그냥 종료합니다.
+            if (!userText) return;
+
+            // [화면에 내 메시지 추가]
+            // - 새로운 <p> 요소를 만들고, 내용에 내 메시지를 넣어 messages 영역에 붙입니다.
+            var me = document.createElement('p');
+            me.innerHTML = '<strong>나:</strong> ' + userText;
+            messages.appendChild(me);
+
+            // [서버 주소 만들기]
+            // - 우리가 호출할 백엔드 주소는 다음과 같은 모양입니다.
+            //   BASE_URL + '/langchain_basic_agent/' + THREAD_ID + '/' + user_message
+            // - 사용자가 입력한 문장에는 공백/한글 등이 있을 수 있어
+            //   encodeURIComponent()로 안전하게 바꿔서 주소에 붙입니다.
+            var url = BASE_URL + '/langchain_basic_agent/' + THREAD_ID + '/' + encodeURIComponent(userText);
+
+            // [서버에 요청 보내기]
+            // - fetch(url): 해당 주소로 요청을 보냅니다(기본 GET).
+            // - 서버가 응답하면 .json()으로 JSON으로 해석합니다.
+            // - data.response 안에 AI가 보낸 답변 문자열이 들어있다고 가정합니다.
+            fetch(url)
+                .then(function (r) { return r.json(); }) // 응답을 JSON으로 바꾸기
+                .then(function (data) {
+                    // [AI 응답을 화면에 추가]
+                    var ai = document.createElement('p');
+                    ai.innerHTML = '<strong>AI:</strong> ' + data.response;
+                    messages.appendChild(ai);
+                })
+                .catch(function (err) {
+                    // [에러 처리]
+                    // - 서버가 꺼져 있거나 주소가 틀렸을 때 에러가 납니다.
+                    var errP = document.createElement('p');
+                    errP.innerHTML = '<strong>에러:</strong> ' + err;
+                    messages.appendChild(errP);
+                });
+
+            // 입력칸을 비워 다음 메시지를 준비합니다.
+            input.value = '';
+        });
+    </script>
+    <hr>
+    
+    
+</body>
+</html>

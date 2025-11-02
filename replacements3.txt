@@ -1,0 +1,1 @@
+regex:sk-proj-[A-Za-z0-9_\-]+==>OPENAI_API_KEY_PLACEHOLDER

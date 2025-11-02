@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>귀농 청년 맞춤 서비스</title>
+  <link rel="stylesheet" href="index.css" />
+</head>
+<body>
+  <div class="layout">
+    <!-- 사이드바 -->
+    <aside class="sidebar" aria-label="주 메뉴">
+      <div class="brand">
+        <span class="logo">🌱</span>
+        <span class="brand-text">귀농 청년</span>
+      </div>
+
+      <nav class="menu" id="sidebar-menu">
+        <a class="menu-item active" href="#recommend" data-target="page-recommend">
+          <span class="icon">🧭</span>
+          <span class="label">맞춤 작물 추천</span>
+        </a>
+        <a class="menu-item" href="#scheduler" data-target="page-scheduler">
+          <span class="icon">📅</span>
+          <span class="label">농사일정 관리</span>
+        </a>
+        <a class="menu-item" href="#policy" data-target="page-policy">
+          <span class="icon">🏛️</span>
+          <span class="label">지원 정책 정보</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <small>© 2025 Prototype</small>
+      </div>
+
+      <!-- 모바일 토글 버튼 -->
+      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="사이드바 접기/펼치기">☰</button>
+    </aside>
+
+    <!-- 메인 영역 -->
+    <div class="main">
+      <header class="container header">
+        <h1>귀농 청년 서비스</h1>
+        <p class="subtitle">작물 추천 · 일정 관리 · 지원 정책을 한 곳에서</p>
+      </header>
+
+      <main class="container content">
+        <!-- 페이지: 맞춤 작물 추천 -->
+        <section id="page-recommend" class="page visible">
+          <div class="grid">
+            <!-- 입력 -->
+            <section class="card">
+              <h2>기본 정보 입력</h2>
+
+              <form id="recommend-form" novalidate>
+                <div class="field">
+                  <label for="region">지역(선택)</label>
+                  <select id="region" name="region">
+                    <option value="">선택 안 함</option>
+                    <option value="gyeonggi">경기</option>
+                    <option value="gangwon">강원</option>
+                    <option value="chungcheong">충청</option>
+                    <option value="jeolla">전라</option>
+                    <option value="gyeongsang">경상</option>
+                    <option value="jeju">제주</option>
+                  </select>
+                  <small class="hint">기후/유통을 고려한 미세 조정에 사용됩니다.</small>
+                </div>
+
+                <div class="field">
+                  <label for="land_size">토지 규모 <span class="req">*</span></label>
+                  <div class="input-with-unit">
+                    <input id="land_size" name="land_size" type="number" min="0" step="0.01" placeholder="예: 0.5" required />
+                    <span class="unit">ha</span>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label for="labor">가용 인력(상시) <span class="req">*</span></label>
+                  <div class="input-with-unit">
+                    <input id="labor" name="labor" type="number" min="0" step="1" placeholder="예: 2" required />
+                    <span class="unit">명</span>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label for="capital">투입 가능 자본금 <span class="req">*</span></label>
+                  <div class="input-with-unit">
+                    <input id="capital" name="capital" type="number" min="0" step="1000000" placeholder="예: 30000000" required />
+                    <span class="unit">원</span>
+                  </div>
+                  <small class="hint">설비/종자/자재 초기비용 기준 대략치</small>
+                </div>
+
+                <div class="field">
+                  <label for="experience">농업 경험</label>
+                  <select id="experience" name="experience">
+                    <option value="none">없음</option>
+                    <option value="basic">기초(1년 미만)</option>
+                    <option value="intermediate">중급(1~3년)</option>
+                    <option value="advanced">고급(3년 이상)</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label for="notes">추가 조건(선택)</label>
+                  <textarea id="notes" name="notes" rows="3" placeholder="예: 작업 시간 저녁 위주, 노지 위주, 시설 설치 가능 등"></textarea>
+                </div>
+
+                <div class="actions">
+                  <button type="submit" class="btn-primary">작물 추천 받기</button>
+                  <button type="reset" class="btn-ghost">초기화</button>
+                </div>
+
+                <p id="form-error" class="error" aria-live="polite" hidden></p>
+              </form>
+            </section>
+
+            <!-- 결과 -->
+            <section class="card">
+              <h2>추천 결과</h2>
+              <div id="loading" class="loading" hidden>
+                <div class="spinner" aria-label="로딩 중"></div>
+                <p>분석 중입니다…</p>
+              </div>
+
+              <div id="result" class="result" aria-live="polite">
+                <p class="muted">입력 후 “작물 추천 받기”를 눌러주세요.</p>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- 페이지: 농사일정 관리 -->
+        <section id="page-scheduler" class="page">
+          <section class="card">
+            <h2>농사일정 관리</h2>
+            <p class="muted">작물/작업/날짜를 등록하고 월간 캘린더로 확인하세요. (FastAPI 연동 예정)</p>
+
+            <form id="task-form" class="task-form">
+              <div class="field">
+                <label for="task-crop">작물</label>
+                <input id="task-crop" type="text" placeholder="예: 토마토" />
+              </div>
+
+              <div class="field">
+                <label for="task-type">작업</label>
+                <select id="task-type">
+                  <option>파종</option>
+                  <option>정식</option>
+                  <option>관수</option>
+                  <option>시비</option>
+                  <option>병해충 방제</option>
+                  <option>수확</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="task-date">날짜</label>
+                <input id="task-date" type="date" />
+              </div>
+
+              <div class="actions">
+                <button type="button" class="btn-primary" id="add-task">일정 추가</button>
+                <button type="reset" class="btn-ghost">초기화</button>
+              </div>
+            </form>
+
+            <div class="task-list" id="task-list">
+              <p class="muted">등록된 일정이 없습니다.</p>
+            </div>
+          </section>
+        </section>
+
+        <!-- 페이지: 지원 정책 정보 -->
+        <section id="page-policy" class="page">
+          <section class="card">
+            <h2>지원 정책 정보</h2>
+            <p class="muted">지역/연령/창업단계에 맞는 정책을 찾아보세요. (FastAPI 연동 예정)</p>
+
+            <form id="policy-form" class="policy-form">
+              <div class="field">
+                <label for="policy-region">지역</label>
+                <select id="policy-region">
+                  <option value="">전국</option>
+                  <option value="gyeonggi">경기</option>
+                  <option value="gangwon">강원</option>
+                  <option value="chungcheong">충청</option>
+                  <option value="jeolla">전라</option>
+                  <option value="gyeongsang">경상</option>
+                  <option value="jeju">제주</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="policy-age">연령대</label>
+                <select id="policy-age">
+                  <option>무관</option>
+                  <option>청년(만 39세 이하)</option>
+                  <option>중장년</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="policy-stage">창업 단계</label>
+                <select id="policy-stage">
+                  <option>예비</option>
+                  <option>초기(1~3년)</option>
+                  <option>성장(3년 이상)</option>
+                </select>
+              </div>
+
+              <div class="actions">
+                <button type="submit" class="btn-primary">정책 검색</button>
+              </div>
+            </form>
+
+            <div id="policy-results" class="result" aria-live="polite">
+              <p class="muted">검색 조건을 선택하고 “정책 검색”을 눌러주세요.</p>
+            </div>
+          </section>
+        </section>
+      </main>
+
+      <footer class="container footer">
+        <small>© 2025 귀농청년맞춤 에이전트 · 프로토타입</small>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    // 사이드바 토글(모바일)
+    const sidebar = document.querySelector('.sidebar');
+    const toggleBtn = document.getElementById('sidebar-toggle');
+    toggleBtn.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+    });
+
+    // 섹션 전환 & 활성 메뉴 표시
+    const pages = document.querySelectorAll('.page');
+    const menu = document.getElementById('sidebar-menu');
+    menu.addEventListener('click', (e) => {
+      const link = e.target.closest('a.menu-item');
+      if (!link) return;
+      e.preventDefault();
+
+      // active 메뉴 전환
+      document.querySelectorAll('.menu-item').forEach(a => a.classList.remove('active'));
+      link.classList.add('active');
+
+      // 페이지 전환
+      const targetId = link.dataset.target;
+      pages.forEach(p => p.classList.remove('visible'));
+      document.getElementById(targetId).classList.add('visible');
+
+      // 모바일에서 클릭 시 사이드바 닫기
+      sidebar.classList.remove('open');
+    });
+
+    // 더미: 일정 추가(프론트에 임시로 리스트 출력)
+    const addBtn = document.getElementById('add-task');
+    const list = document.getElementById('task-list');
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        const crop = document.getElementById('task-crop').value.trim() || '미지정';
+        const type = document.getElementById('task-type').value;
+        const date = document.getElementById('task-date').value || '날짜 미지정';
+
+        const item = document.createElement('div');
+        item.className = 'result-card';
+        item.innerHTML = `
+          <header>
+            <h3>${crop}</h3>
+            <span class="badge">${type}</span>
+          </header>
+          <p class="desc">일자: ${date}</p>
+        `;
+        // 첫 항목 메시지 제거
+        if (list.firstElementChild && list.firstElementChild.classList.contains('muted')) {
+          list.innerHTML = '';
+        }
+        list.prepend(item);
+      });
+    }
+
+    // TODO:
+    // - 추천: fetch('/api/recommend', { method:'POST', body: JSON.stringify(...) })
+    // - 일정: fetch('/api/tasks') CRUD
+    // - 정책: fetch('/api/policies?region=...') 조회
+  </script>
+</body>
+</html>
