@@ -2,42 +2,43 @@
 import os
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
 
 # -----------------------
 # 0. 환경변수 로드
 # -----------------------
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "chatbot_db")
 
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY 가 .env 에 설정되지 않았습니다.")
+if not GEMINI_API_KEY:
+    raise RuntimeError("GEMINI_API_KEY 가 .env 에 설정되지 않았습니다.")
+
 
 # -----------------------
 # 1. FastAPI 앱 생성
 # -----------------------
-app = FastAPI(title="귀농 청년 맞춤 챗봇 (FastAPI + MongoDB + LangChain)")
+app = FastAPI(title="귀농 청년 맞춤 챗봇 (FastAPI + MongoDB + Gemini)")
 
-# CORS (나중에 React 프론트와 연동할 때를 대비)
+# CORS (나중에 프론트엔드 연동을 위해 허용)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 개발 단계에서는 * 허용, 운영에서는 도메인 제한 권장
+    allow_origins=["*"],  # 개발 단계에서는 * 허용, 운영 시 도메인 제한 권장
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # -----------------------
 # 2. MongoDB 연결
@@ -46,16 +47,16 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[MONGO_DB_NAME]
 profiles_collection = db["profiles"]  # user 프로필 저장 컬렉션
 
+
 # -----------------------
-# 3. LangChain 설정
+# 3. LangChain + Gemini 설정
 # -----------------------
-llm = ChatOpenAI(
-    api_key=OPENAI_API_KEY,
-    model=OPENAI_MODEL,
-    temperature=0.3,  # 답변 안정성 위주
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-pro",  # 필요하면 gemini-1.5-flash 등으로 변경 가능
+    google_api_key=GEMINI_API_KEY,
+    temperature=0.3,  # 답변 안정성 중심
 )
 
-# 프로필을 활용하는 프롬프트 템플릿
 system_template = """
 당신은 '귀농 청년 맞춤 에이전트'입니다.
 항상 존댓말을 사용합니다.
@@ -67,7 +68,8 @@ system_template = """
 
 규칙:
 - 모르는 정보는 아는 척하지 말고, 추가 확인이 필요하다고 말합니다.
-- 너무 긴 답변 대신 핵심 위주로 설명하고, 필요하다면 다음에 무엇을 물어보면 좋을지 한 가지 정도만 제안합니다.
+- 너무 긴 답변 대신 핵심 위주로 설명하고,
+  필요하다면 다음에 무엇을 물어보면 좋을지 한 가지 정도만 제안합니다.
 """
 
 prompt = ChatPromptTemplate.from_messages(
@@ -77,10 +79,10 @@ prompt = ChatPromptTemplate.from_messages(
     ]
 )
 
+
 # -----------------------
 # 4. Pydantic 모델 정의
 # -----------------------
-
 class Profile(BaseModel):
     userId: str
     region: Optional[str] = None
@@ -101,7 +103,6 @@ class ChatResponse(BaseModel):
 # -----------------------
 # 5. 헬스 체크
 # -----------------------
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -110,7 +111,6 @@ def health():
 # -----------------------
 # 6. 프로필 저장 / 업데이트
 # -----------------------
-
 @app.post("/profile")
 def save_profile(profile: Profile):
     """
@@ -128,7 +128,6 @@ def save_profile(profile: Profile):
 # -----------------------
 # 7. 프로필 기반 챗봇 대화
 # -----------------------
-
 def profile_to_hint(profile_doc: Optional[dict]) -> str:
     """
     MongoDB에서 가져온 프로필 문서를 한 줄 설명으로 변환
@@ -156,13 +155,13 @@ def chat(req: ChatRequest):
     """
     1) userId로 MongoDB에서 프로필 조회
     2) 프로필을 LangChain 프롬프트에 주입
-    3) OpenAI 모델로 대답 생성
+    3) Gemini 모델로 대답 생성
     """
     # 1) 프로필 조회
     profile_doc = profiles_collection.find_one({"userId": req.userId}, {"_id": False})
     profile_hint = profile_to_hint(profile_doc)
 
-    # 2) LangChain 체인 실행
+    # 2) LangChain Expression Language 체인 실행
     chain = prompt | llm
     result = chain.invoke(
         {
@@ -171,6 +170,7 @@ def chat(req: ChatRequest):
         }
     )
 
-    answer_text = result.content if hasattr(result, "content") else str(result)
+    # result 는 보통 AIMessage 객체
+    answer_text = getattr(result, "content", str(result))
 
     return ChatResponse(answer=answer_text)
