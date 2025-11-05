@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 # -----------------------
@@ -17,18 +17,19 @@ from langchain_core.prompts import ChatPromptTemplate
 # -----------------------
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "chatbot_db")
 
-if not GEMINI_API_KEY:
-    raise RuntimeError("GEMINI_API_KEY 가 .env 에 설정되지 않았습니다.")
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY 가 .env 에 설정되지 않았습니다.")
 
 
 # -----------------------
 # 1. FastAPI 앱 생성
 # -----------------------
-app = FastAPI(title="귀농 청년 맞춤 챗봇 (FastAPI + MongoDB + Gemini)")
+app = FastAPI(title="귀농 청년 맞춤 챗봇 (FastAPI + MongoDB + OpenAI)")
 
 # CORS (나중에 프론트엔드 연동을 위해 허용)
 app.add_middleware(
@@ -49,11 +50,11 @@ profiles_collection = db["profiles"]  # user 프로필 저장 컬렉션
 
 
 # -----------------------
-# 3. LangChain + Gemini 설정
+# 3. LangChain + OpenAI 설정
 # -----------------------
-llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-pro",  # 필요하면 gemini-1.5-flash 등으로 변경 가능
-    google_api_key=GEMINI_API_KEY,
+llm = ChatOpenAI(
+    api_key=OPENAI_API_KEY,
+    model=OPENAI_MODEL,
     temperature=0.3,  # 답변 안정성 중심
 )
 
@@ -155,7 +156,7 @@ def chat(req: ChatRequest):
     """
     1) userId로 MongoDB에서 프로필 조회
     2) 프로필을 LangChain 프롬프트에 주입
-    3) Gemini 모델로 대답 생성
+    3) OpenAI 모델로 대답 생성
     """
     # 1) 프로필 조회
     profile_doc = profiles_collection.find_one({"userId": req.userId}, {"_id": False})
