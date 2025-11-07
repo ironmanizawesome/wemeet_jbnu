@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>로그인</title>
+  <style>
+    :root{
+      --bg:#0f172a;        /* slate-900 */
+      --card:#0b1224cc;    /* translucent card */
+      --text:#e5e7eb;      /* gray-200 */
+      --muted:#9ca3af;     /* gray-400 */
+      --primary:#6366f1;   /* indigo-500 */
+      --primary-600:#5458e9;
+      --ring:#93c5fd;      /* sky-300 */
+      --error:#ef4444;     /* red-500 */
+      --ok:#10b981;        /* emerald-500 */
+      --border:#233055;
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#f1f5f9;      /* slate-100 */
+        --card:#ffffffcc;
+        --text:#0f172a;    /* slate-900 */
+        --muted:#64748b;   /* slate-500 */
+        --primary:#4f46e5; /* indigo-600 */
+        --primary-600:#4338ca;
+        --ring:#2563eb;    /* blue-600 */
+        --border:#e2e8f0;  /* slate-200 */
+      }
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
+      color:var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% 10%, #1e293b55, transparent 60%),
+        radial-gradient(800px 400px at 90% 20%, #312e8150, transparent 60%),
+        radial-gradient(900px 500px at 50% 100%, #0ea5e950, transparent 60%),
+        var(--bg);
+      display:grid;
+      place-items:center;
+      padding:24px;
+    }
+    .card{
+      width:100%;
+      max-width:420px;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+      backdrop-filter: blur(10px);
+      padding:28px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:12px; margin-bottom:14px;
+    }
+    .logo{
+      width:40px; height:40px; border-radius:12px;
+      background: linear-gradient(135deg,#60a5fa, #8b5cf6);
+      display:grid; place-items:center; color:white; font-weight:800;
+      letter-spacing:.5px;
+      box-shadow:0 10px 24px rgba(99,102,241,.35);
+    }
+    h1{
+      font-size:1.25rem; margin:0 0 4px 0;
+    }
+    p.desc{
+      margin:0 0 18px 0; color:var(--muted); font-size:.95rem;
+    }
+    form{display:grid; gap:14px}
+    .field{display:grid; gap:6px}
+    label{font-size:.9rem}
+    .control{
+      position:relative
+    }
+    input[type="email"],
+    input[type="password"]{
+      width:100%;
+      appearance:none;
+      background:#0b1224;
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:14px 44px 14px 14px;
+      outline:none;
+      transition:border-color .2s, box-shadow .2s, background .2s;
+    }
+    @media (prefers-color-scheme: light){
+      input[type="email"], input[type="password"]{ background:#fff;}
+    }
+    input::placeholder{color:var(--muted)}
+    input:focus{
+      border-color:var(--ring);
+      box-shadow:0 0 0 4px color-mix(in oklab, var(--ring) 35%, transparent);
+    }
+    .toggle{
+      position:absolute; right:10px; top:50%; transform:translateY(-50%);
+      border:none; background:transparent; color:var(--muted);
+      cursor:pointer; padding:6px; border-radius:8px;
+    }
+    .toggle:focus-visible{
+      outline:2px solid var(--ring); outline-offset:2px;
+    }
+    .row{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      margin-top:4px;
+    }
+    .row a{ color:var(--primary); text-decoration:none; font-size:.9rem}
+    .row a:hover{ text-decoration:underline }
+    .actions{ display:grid; gap:10px; margin-top:6px}
+    .btn{
+      width:100%;
+      border:none; border-radius:12px; padding:12px 14px; cursor:pointer;
+      font-weight:700; color:white; background:var(--primary);
+      transition: transform .04s ease, box-shadow .2s, background .2s;
+      box-shadow:0 10px 22px color-mix(in oklab, var(--primary) 35%, transparent);
+    }
+    .btn:hover{ background:var(--primary-600) }
+    .btn:active{ transform: translateY(1px) }
+    .btn.secondary{
+      background:transparent; color:var(--text); border:1px solid var(--border);
+      box-shadow:none;
+    }
+    .hint{ color:var(--muted); font-size:.85rem; text-align:center }
+    .error{
+      display:none;
+      background: color-mix(in oklab, var(--error) 15%, transparent);
+      border:1px solid color-mix(in oklab, var(--error) 35%, transparent);
+      color:#fecaca; /* red-200 */
+      padding:10px 12px; border-radius:10px; font-size:.9rem;
+    }
+    .error.show{ display:block }
+    .success{
+      display:none;
+      background: color-mix(in oklab, var(--ok) 15%, transparent);
+      border:1px solid color-mix(in oklab, var(--ok) 35%, transparent);
+      color:#d1fae5;
+      padding:10px 12px; border-radius:10px; font-size:.9rem;
+    }
+    .success.show{ display:block }
+    footer{
+      margin-top:18px; text-align:center; color:var(--muted); font-size:.85rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="card" aria-labelledby="title">
+    <div class="brand" aria-hidden="true">
+      <div class="logo" aria-hidden="true">LG</div>
+      <div>
+        <h1 id="title">로그인</h1>
+        <p class="desc">계정에 접속하려면 이메일과 비밀번호를 입력하세요.</p>
+      </div>
+    </div>
+
+    <div id="error" class="error" role="alert">이메일 또는 비밀번호를 확인해 주세요.</div>
+    <div id="success" class="success" role="status">로그인 성공! (데모 메시지)</div>
+
+    <!-- 실제 서비스에서는 action을 백엔드 엔드포인트로 바꾸세요 -->
+    <form id="loginForm" method="POST" action="/auth/login" novalidate>
+      <div class="field">
+        <label for="email">이메일</label>
+        <div class="control">
+          <input id="email" name="email" type="email" inputmode="email"
+                 placeholder="you@example.com" autocomplete="email" required />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="password">비밀번호</label>
+        <div class="control">
+          <input id="password" name="password" type="password"
+                 placeholder="8자 이상" autocomplete="current-password" minlength="8" required />
+          <button class="toggle" type="button" aria-label="비밀번호 보기" id="togglePassword">보기</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <label style="display:flex;align-items:center;gap:8px;font-size:.9rem;color:var(--muted)">
+          <input type="checkbox" name="remember" value="1" />
+          로그인 상태 유지
+        </label>
+        <a href="#" onclick="alert('임시 링크입니다. 실제 비밀번호 찾기 페이지로 연결하세요.'); return false;">비밀번호 찾기</a>
+      </div>
+
+      <div class="actions">
+        <button class="btn" type="submit" id="submitBtn">로그인</button>
+        <button class="btn secondary" type="button" onclick="alert('소셜 로그인 데모 버튼입니다.')">Google로 계속</button>
+      </div>
+    </form>
+
+    <footer>계정이 없나요? <a href="#" onclick="alert('회원가입 페이지로 연결하세요.'); return false;" style="color:var(--primary)">회원가입</a></footer>
+  </main>
+
+  <script>
+  const form = document.getElementById('loginForm');
+  const email = document.getElementById('email');
+  const password = document.getElementById('password');
+  const toggle = document.getElementById('togglePassword');
+  const errorBox = document.getElementById('error');
+  const okBox = document.getElementById('success');
+
+  toggle.addEventListener('click', () => {
+    const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+    password.setAttribute('type', type);
+    toggle.textContent = type === 'password' ? '보기' : '숨기기';
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault(); // 폼이 실제로 서버로 전송되지 않도록 함
+
+    // 간단한 유효성 검사
+    if (!email.value || !password.value) {
+      errorBox.textContent = '이메일과 비밀번호를 입력하세요.';
+      errorBox.classList.add('show');
+      return;
+    }
+
+    // 유효성 통과 시 main.html로 이동
+    window.location.href = 'main.html';
+  });
+</script>
+
+</body>
+</html>
