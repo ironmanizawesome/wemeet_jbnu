@@ -1,1 +1,162 @@
+/* 배경 전체 */
+body {
+    margin: 0;
+    height: 100vh;
+    background-color: #1b4332; /* 진한 초록 */
+    font-family: 'Noto Sans KR', sans-serif;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 80px;
+}
+
+/* 메인 컨테이너 */
+.container {
+    background: linear-gradient(135deg, #d8f3dc, #f0fff0);
+    padding: 50px 60px;
+    border-radius: 25px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+    text-align: center;
+    width: 500px;
+}
+
+/* 제목 스타일 */
+h1 {
+    font-size: 2.3em;
+    color: #2d6a4f;
+    text-shadow: 2px 2px 6px rgba(0,0,0,0.3);
+    margin-bottom: 40px;
+}
+
+/* 입력 폼 전체 */
+.input-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* 각 입력 그룹 */
+.input-group {
+    margin-bottom: 25px;
+    text-align: center;
+}
+
+/* 라벨 */
+label {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #081c15;
+    display: block;
+    margin-bottom: 10px;
+}
+
+/* 셀렉트 박스 */
+select {
+    font-size: 1em;
+    padding: 10px;
+    width: 250px;
+    border: 2px solid #52b788;
+    border-radius: 10px;
+    background-color: #ffffff;
+    color: #2d6a4f;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+select:hover, select:focus {
+    border-color: #40916c;
+    box-shadow: 0 0 10px rgba(82,183,136,0.4);
+}
+
+/* 버튼 */
+button {
+    background-color: #52b788;
+    color: white;
+    font-size: 1.2em;
+    font-weight: bold;
+    padding: 12px 30px;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: 0.3s ease;
+    margin-top: 20px;
+}
+
+button:hover {
+    background-color: #40916c;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+/* 결과 페이지 공통 스타일 */
+.condition {
+    margin-bottom: 25px;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    font-size: 1.1em;
+    color: #1b4332;
+}
+
+.result-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.result-item {
+    background: linear-gradient(135deg, #f1fff1, #e4f9e8);
+    margin: 20px 0;
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0 5px 10px rgba(0,0,0,0.15);
+    text-align: left;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.result-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.25);
+}
+
+.result-item h3 {
+    font-size: 1.5em;
+    color: #2d6a4f;
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.2);
+    margin-bottom: 10px;
+}
+
+.result-item p {
+    font-size: 1.1em;
+    color: #081c15;
+    margin: 5px 0;
+}
+
+.no-result {
+    font-size: 1.2em;
+    color: #fff;
+    background: rgba(255,0,0,0.4);
+    padding: 10px 20px;
+    border-radius: 8px;
+    display: inline-block;
+}
+
+.back-btn {
+    display: inline-block;
+    margin-top: 25px;
+    text-decoration: none;
+    background: #52b788;
+    color: white;
+    padding: 10px 25px;
+    border-radius: 12px;
+    font-weight: bold;
+    transition: background 0.3s ease, transform 0.3s ease;
+}
+
+.back-btn:hover {
+    background: #40916c;
+    transform: translateY(-2px);
+}
+
 
