@@ -200,3 +200,238 @@ input:focus, select:focus{
   .field__row{ flex-direction:column }
   .chip-input{ flex-direction:column }
 }
+
+/* === 공통 레이아웃 === */
+.app-body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 80% -10%, var(--primary-weak), transparent),
+    var(--bg);
+  color: var(--text);
+}
+
+/* 상단 네비게이션 */
+.top-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 32px;
+  background: rgba(15, 23, 32, 0.9);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+}
+
+.top-nav__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-nav__logo {
+  font-size: 20px;
+}
+
+.top-nav__title {
+  font-weight: 600;
+}
+
+.top-nav__menu a {
+  margin-left: 16px;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.top-nav__menu a:hover {
+  color: var(--primary);
+}
+
+.top-nav__menu a.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* 페이지 메인 레이아웃 */
+.page-container {
+  max-width: 1200px;
+  margin: 24px auto;
+  padding: 0 24px 32px;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 16px;
+}
+
+/* 왼쪽 패널 (프로필) */
+.side-panel {
+  background: var(--panel);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  padding: 16px 18px;
+}
+
+.side-panel h2 {
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+.side-panel__desc {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.profile-box {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.profile-box h3 {
+  margin: 4px 0 4px;
+  font-size: 14px;
+}
+
+.profile-box__hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.profile-field span {
+  color: var(--muted);
+}
+
+.profile-field input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #020617;
+  color: var(--text);
+}
+
+.profile-field input::placeholder {
+  color: #64748b;
+}
+
+/* 오른쪽 패널 (채팅) */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  padding: 16px 18px;
+  min-height: 480px;
+}
+
+.chat-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.chat-panel__header h2 {
+  margin: 0;
+}
+
+.chat-panel__status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 채팅 내용 영역 */
+.chat-container {
+  flex: 1;
+  margin-top: 4px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #020617;
+  border: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 말풍선 */
+.message-row {
+  display: flex;
+}
+
+.message-row.user {
+  justify-content: flex-end;
+}
+
+.message-row.bot {
+  justify-content: flex-start;
+}
+
+.bubble {
+  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.message-row.user .bubble {
+  background: var(--primary);
+  color: #0b1120;
+  border-bottom-right-radius: 4px;
+}
+
+.message-row.bot .bubble {
+  background: #020617;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+/* 입력 바 */
+.input-bar {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.input-bar textarea {
+  flex: 1;
+  resize: none;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #020617;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.input-bar textarea::placeholder {
+  color: var(--muted);
+}
+
+.input-bar button {
+  padding: 0 20px;
+  border-radius: 999px;
+  border: none;
+  background: #22c55e;
+  color: #022c22;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.input-bar button:hover {
+  filter: brightness(1.05);
+}

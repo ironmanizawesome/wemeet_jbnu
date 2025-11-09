@@ -1,0 +1,100 @@
+<!-- chatbot.html -->
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>귀농 청년 맞춤 에이전트 - 챗봇</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 공통 스타일 -->
+    <link rel="stylesheet" href="styles.css" />
+    <script src="chatbot.js" defer></script>
+
+  </head>
+  <body class="app-body">
+    <!-- 상단 네비게이션 (다른 페이지로 이동하는 메뉴) -->
+    <header class="top-nav">
+      <div class="top-nav__left">
+        <span class="top-nav__logo">🌱</span>
+        <span class="top-nav__title">귀농 청년 맞춤 에이전트</span>
+      </div>
+      <nav class="top-nav__menu">
+        <a href="main.html">홈</a>
+        <a href="recommend.html">작물 추천</a>
+        <a href="calendar.html">일정 관리</a>
+        <a href="policy.html">정책 정보</a>
+        <a href="chatbot.html" class="active">챗봇</a>
+        <a href="settings.html">설정</a>
+      </nav>
+    </header>
+
+    <!-- 메인 콘텐츠 -->
+    <main class="page-container">
+      <!-- 왼쪽: 간단한 프로필/설명 -->
+      <section class="side-panel">
+        <h2>챗봇</h2>
+        <p class="side-panel__desc">
+          귀농 지역, 토지 규모, 자본금, 경험 등을 바탕으로<br />
+          맞춤형 농사 상담을 도와드리는 챗봇입니다.
+        </p>
+
+        <div class="profile-box">
+          <h3>프로필 정보</h3>
+          <p class="profile-box__hint">
+            ※ 임시로 여기서 입력해도 되고, 나중에<br />
+            <strong>profile.html</strong>과 연동해서 자동으로 불러오셔도 됩니다.
+          </p>
+          <label class="profile-field">
+            <span>사용자 ID</span>
+            <input id="userId" type="text" placeholder="예: hyeon" />
+          </label>
+          <label class="profile-field">
+            <span>지역</span>
+            <input id="region" type="text" placeholder="예: 부산" />
+          </label>
+          <label class="profile-field">
+            <span>토지 규모</span>
+            <input id="land_area" type="text" placeholder="예: 1000평" />
+          </label>
+          <label class="profile-field">
+            <span>자본금</span>
+            <input id="capital" type="text" placeholder="예: 5000만원" />
+          </label>
+          <label class="profile-field">
+            <span>농업 경험</span>
+            <input id="experience" type="text" placeholder="예: 1년" />
+          </label>
+        </div>
+      </section>
+
+      <!-- 오른쪽: 실제 채팅 영역 -->
+      <section class="chat-panel">
+        <div class="chat-panel__header">
+          <h2>귀농 상담 챗봇</h2>
+          <span class="chat-panel__status" id="chatStatus">온라인</span>
+        </div>
+
+        <div class="chat-container" id="chatContainer">
+          <!-- JS에서 메시지가 계속 추가됩니다. -->
+          <div class="message-row bot">
+            <div class="bubble">
+              안녕하세요! 👋<br />
+              귀농과 관련해서 궁금하신 점을 편하게 물어보세요.
+            </div>
+          </div>
+        </div>
+
+        <form class="input-bar" id="chatForm">
+          <textarea
+            id="messageInput"
+            rows="1"
+            placeholder="챗봇에게 물어볼 내용을 입력하고 Enter를 눌러주세요."
+          ></textarea>
+          <button type="submit">전송</button>
+        </form>
+      </section>
+    </main>
+
+    <!-- 챗봇 전용 스크립트 -->
+    <script src="chatbot.js"></script>
+  </body>
+</html>
