@@ -1,0 +1,25 @@
+### 🧩 1. 서버 상태 확인
+GET http://localhost:8000/health
+
+
+### 👤 2. 프로필 저장 (MongoDB에 user1 정보 등록)
+POST http://localhost:8000/profile
+Content-Type: application/json
+
+{
+  "userId": "user1",
+  "region": "전북 완주",
+  "land_area": "2000㎡",
+  "capital": "2천만원",
+  "experience": "초보"
+}
+
+
+### 💬 3. 챗봇 대화 (Gemini 모델이 프로필 기반으로 답변)
+POST http://localhost:8000/chat
+Content-Type: application/json
+
+{
+  "userId": "user1",
+  "message": "제 상황에 맞는 귀농 준비 과정을 알려주세요."
+}
