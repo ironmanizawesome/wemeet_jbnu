@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 피드백 코치</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .chat-container {
+      width: 70%;
+      max-width: 800px;
+      margin: 40px auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      height: 80vh;
+      overflow: hidden;
+    }
+    .chat-header {
+      background: linear-gradient(90deg, #6fbf73, #3b873e);
+      color: white;
+      padding: 15px;
+      font-size: 1.2rem;
+      text-align: center;
+    }
+    .chat-body {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .message {
+      margin: 10px 0;
+      padding: 10px 15px;
+      border-radius: 12px;
+      max-width: 70%;
+    }
+    .bot {
+      background: #e8f5e9;
+      align-self: flex-start;
+    }
+    .user {
+      background: #c8e6c9;
+      align-self: flex-end;
+    }
+    .chat-input {
+      display: flex;
+      border-top: 1px solid #ddd;
+    }
+    .chat-input input {
+      flex: 1;
+      padding: 15px;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+    }
+    .chat-input button {
+      background: #3b873e;
+      color: white;
+      border: none;
+      padding: 0 20px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .chat-input button:hover {
+      background: #2e7031;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">🤖 AI 농사 코치</div>
+    <div class="chat-body" id="chatBody">
+      <div class="message bot">안녕하세요! 오늘의 농사일지와 할 일을 바탕으로 피드백을 드릴게요 😊</div>
+    </div>
+    <div class="chat-input">
+      <input type="text" id="userInput" placeholder="메시지를 입력하세요..." />
+      <button id="sendBtn">전송</button>
+    </div>
+  </div>
+
+  <script>
+    const chatBody = document.getElementById("chatBody");
+    const userInput = document.getElementById("userInput");
+    const sendBtn = document.getElementById("sendBtn");
+
+    sendBtn.addEventListener("click", sendMessage);
+    userInput.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") sendMessage();
+    });
+
+    function sendMessage() {
+      const message = userInput.value.trim();ㄴ
+      if (!message) return;
+
+      // 사용자 메시지 표시
+      const userMsg = document.createElement("div");
+      userMsg.className = "message user";
+      userMsg.textContent = message;
+      chatBody.appendChild(userMsg);
+
+      // 입력창 비우기
+      userInput.value = "";
+
+      // AI 응답(현재는 임시로 고정 문장)
+      setTimeout(() => {
+        const botMsg = document.createElement("div");
+        botMsg.className = "message bot";
+        botMsg.textContent = "좋아요! 그 부분은 아주 잘하고 있어요 🌱 앞으로는 좀 더 세심히 관찰해보세요.";
+        chatBody.appendChild(botMsg);
+        chatBody.scrollTop = chatBody.scrollHeight;
+      }, 800);
+    }
+  </script>
+</body>
+</html>
+
+입력하는 코드 ... 고쳐보기
