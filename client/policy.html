@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>청년 귀농 지원 정책</title>
 <style>
-body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; position: relative; }
 h1 { text-align: center; color: #2d6a4f; }
 .category-btn { display: inline-block; margin: 10px; padding: 10px 20px; background: #40916c; color: white; border: none; border-radius: 5px; cursor: pointer; }
 .category-btn:hover { background: #2d6a4f; }
@@ -15,49 +15,83 @@ h1 { text-align: center; color: #2d6a4f; }
 .modal-content { background: white; margin: 10% auto; padding: 20px; width: 80%; border-radius: 5px; position: relative; }
 .close { position: absolute; top: 10px; right: 15px; font-size: 1.5em; cursor: pointer; }
 .modal a { color: #40916c; }
-#sub-category-container { margin-top: 20px; }
 #region-selection { text-align:center; margin-bottom:15px; }
 #selected-region-tag { display:none; margin-left:10px; color:white; background:#2d6a4f; padding:5px 10px; border-radius:15px; }
+
+/* 즐겨찾기 버튼 */
+#favorite-btn {
+  position: fixed;
+  top: 20px;
+  right: 25px;
+  background: #ffd166;
+  color: #333;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 25px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+#favorite-btn:hover { background: #fcbf49; }
+
+/* 최근 본 정책 버튼 */
+#recent-btn {
+  position: fixed;
+  top: 70px;
+  right: 25px;
+  background: #b7e4c7;
+  color: #333;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 25px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+#recent-btn:hover { background: #95d5b2; }
 </style>
 </head>
 <body>
 
 <h1>청년 귀농 지원 정책</h1>
 
+<button id="favorite-btn" onclick="showFavorites()">⭐ 즐겨찾기</button>
+<button id="recent-btn" onclick="showRecent()">📄 최근 본 정책</button>
+
 <div id="region-selection">
-<label for="region-select"><strong>지역 선택:</strong></label>
-<select id="region-select" onchange="selectRegion()">
-<option value="">전체 지역</option>
-<option value="seoul">서울특별시</option>
-<option value="jeonnam">전라남도</option>
-<option value="jeonbuk">전라북도</option>
-<option value="busan">부산광역시</option>
-<option value="gwangju">광주광역시</option>
-<option value="ulsan">울산광역시</option>
-<option value="daejeon">대전광역시</option>
-<option value="daegu">대구광역시</option>
-</select>
-<span id="selected-region-tag"></span>
+  <label for="region-select"><strong>지역 선택:</strong></label>
+  <select id="region-select" onchange="selectRegion()">
+	  <option value="">전체 지역</option>
+    <option value="서울특별시">서울특별시</option>
+		<option value="전라남도">전라남도</option>
+		<option value="전라북도">전라북도</option>
+		<option value="부산광역시">부산광역시</option>
+		<option value="광주광역시">광주광역시</option>
+		<option value="울산광역시">울산광역시</option>
+		<option value="대전광역시">대전광역시</option>
+    <option value="대구광역시">대구광역시</option>
+  </select>
+  <span id="selected-region-tag"></span>
 </div>
 
 <div id="category-selection" style="display:none;">
-<button class="category-btn" onclick="showCategory('income')">소득·정착 지원</button>
-<button class="category-btn" onclick="showCategory('education')">교육·컨설팅 지원</button>
-<button class="category-btn" onclick="showCategory('startup')">기술/창업 지원</button>
+  <button class="category-btn" onclick="showCategory('income')">소득·정착 지원</button>
+  <button class="category-btn" onclick="showCategory('education')">교육·컨설팅 지원</button>
+  <button class="category-btn" onclick="showCategory('startup')">기술/창업 지원</button>
 </div>
 
 <div id="policy-container"></div>
 <div id="sub-category-container" style="display:none;"></div>
 
 <div id="modal" class="modal">
-<div class="modal-content">
-<span class="close" onclick="closeModal()">&times;</span>
-<div id="modal-body"></div>
-</div>
+  <div class="modal-content">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <div id="modal-body"></div>
+  </div>
 </div>
 
 <script>
-// 지역 선택 후 카테고리 표시
+// ------------------ 지역 선택 ------------------
 function selectRegion() {
   const regionSelect = document.getElementById('region-select');
   const categorySelection = document.getElementById('category-selection');
@@ -75,25 +109,31 @@ function selectRegion() {
   }
 
   document.getElementById('policy-container').innerHTML = '';
-  const subContainer = document.getElementById('sub-category-container');
-  subContainer.style.display = 'none';
-  subContainer.innerHTML = '';
+  document.getElementById('sub-category-container').style.display = 'none';
 }
 
-// ------------------ 전라북도 기존 정책 ------------------
+// ------------------ 정책 데이터 ------------------
 const policies = {
-      income: [
+  income: [
+    {
+      id: "income",
+      title:"소득 지원사업",
+      description:"귀농하는 사람들을 위한 소득지원 정책",
+      source:" ",
+      subcategories: [
         {
-          title: "귀농 농업창업 및 주택구입 지원사업",
-          description: "지원자격: 이주기한:전입일로부터 만 5년이 경과하지 않은 세대주로서 농촌에 가족과 함께 실제 거주하면서 농업 종사하고 있는 자<br>거주기간:농촌지역 전입일을 기준으로 농촌지역 이주 직전에 1년 이상 지속적으로 농촌 외의 지역에서 거주한 자<br><br>",
+      
+          id: "income1",
+          name: "귀농 농업창업 및 주택구입 지원사업",
+          details: "지원자격: 이주기한:전입일로부터 만 5년이 경과하지 않은 세대주로서 농촌에 가족과 함께 실제 거주하면서 농업 종사하고 있는 자<br>거주기간:농촌지역 전입일을 기준으로 농촌지역 이주 직전에 1년 이상 지속적으로 농촌 외의 지역에서 거주한 자<br><br>",
           source: "출처: 농림축산식품부",
-          details: "청년 귀농 정착 지원사업은 초기 농업 정착과 창업을 돕는 프로그램입니다. 신청 방법과 자세한 내용은 아래 링크를 참고하세요.",
-          link: [
-            "https://www.greendaero.go.kr/svc/rfph/cpif/front/home.do"
-          ]
+          link: ["https://www.greendaero.go.kr/svc/rfph/cpif/front/home.do"]
         }
-      ],
-      education: [
+      ]
+    
+    }
+  ],
+  education: [
         {
           title: "귀농 준비 교육",
           description: "농업 기술, 창업 등 귀농 준비를 위한 교육 과정 제공",
@@ -117,87 +157,252 @@ const policies = {
           ]
         }
       ],
-      startup: [
-        {
-          title: "청년 농업 창업 지원금",
-          description: "농업 창업 초기 비용을 지원하여 사업 안정성을 높입니다.",
-          source: "출처: 농림축산식품부",
-          details: "청년 농업 창업 지원금은 창업 초기 비용 부담을 줄여 안정적인 농업 사업을 시작할 수 있도록 돕습니다.",
-          link: "https://www.rda.go.kr"
-        }
-      ]
+  startup: [
+    {
+      id: "startup1",
+      title: "청년 농업 창업 지원금",
+      description: "농업 창업 초기 비용을 지원하여 사업 안정성을 높입니다.",
+      source: "출처: 농림축산식품부",
+      link: ["https://www.rda.go.kr"]
+    }
+  ]
 };
 
-// ------------------ 다른 지역 예시 구조 ------------------
-const policiesByRegion = {
-  jeonnam: {
-    income: [{ title: "소득 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }],
-    education: [{ title: "교육 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }],
-    startup: [{ title: "창업 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }]
-  },
-  gwangju: {
-    income: [{ title: "소득 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }],
-    education: [{ title: "교육 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }],
-    startup: [{ title: "창업 지원 예시", description: "URL 및 세부내용 나중에 추가", source: "출처 예시", link: ["#"] }]
-  }
-  // 나머지 지역도 동일 형식으로 추가 가능
-};
 
-// ------------------ 카테고리 선택 시 정책 표시 ------------------
+// ------------------ 카테고리별 정책 표시 ------------------
 function showCategory(category) {
-  const regionSelect = document.getElementById('region-select');
-  const region = regionSelect.value;
   const container = document.getElementById('policy-container');
   container.innerHTML = '';
-  document.getElementById('sub-category-container').style.display = 'none';
-  document.getElementById('sub-category-container').innerHTML = '';
 
-  if(region === "jeonbuk") {
-    // 전라북도 기존 정책
-    policies[category].forEach(policy => {
-      const card = document.createElement('div');
-      card.className = 'policy-card';
-      card.innerHTML = `<h2>${policy.title}</h2><p class="policy-description">${policy.description}</p><p class="policy-source">${policy.source}</p>`;
-      card.onclick = () => { if(policy.subcategories) showSubcategories(policy.subcategories); else openModal(policy); };
-      container.appendChild(card);
-    });
-  } else if(policiesByRegion[region]) {
-    // 다른 지역 예시
-    policiesByRegion[region][category].forEach(policy => {
-      const card = document.createElement('div');
-      card.className = 'policy-card';
-      card.innerHTML = `<h2>${policy.title}</h2><p class="policy-description">${policy.description}</p><p class="policy-source"><a href="${policy.link[0]}" target="_blank">${policy.link[0]}</a></p>`;
-      container.appendChild(card);
-    });
-  }
+  const regionPolicies = policies[category] || [];
+
+  regionPolicies.forEach(policy => {
+    const card = document.createElement('div');
+    card.className = 'policy-card';
+    const isFav = isFavorite(policy.id);
+    const star = isFav ? '⭐' : '☆';
+
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>${policy.title}</h2>
+        <span id="fav-${policy.id}" style="cursor:pointer; font-size:1.5em;">${star}</span>
+      </div>
+      <p class="policy-description">${policy.description}</p>
+      <p class="policy-source">${policy.source}</p>
+    `;
+
+    card.querySelector(`#fav-${policy.id}`).onclick = (e) => {
+      e.stopPropagation();
+      toggleFavorite(policy.id, policy.title, false, e.target);
+    };
+
+    card.onclick = () => {
+      if (policy.subcategories) showSubcategories(policy.subcategories);
+      else openModal(policy);
+    };
+
+    container.appendChild(card);
+  });
 }
 
-// ------------------ 하위카테고리 및 모달 ------------------
+// ------------------ 하위 정책 ------------------
 function showSubcategories(subcategories) {
   const subContainer = document.getElementById('sub-category-container');
   subContainer.innerHTML = '';
   subContainer.style.display = 'block';
   subcategories.forEach(sub => {
     const btn = document.createElement('button');
+    const isFav = isFavorite(sub.id);
     btn.className = 'category-btn';
-    btn.textContent = sub.name;
+    btn.textContent = (isFav ? '⭐ ' : '') + sub.name;
     btn.onclick = () => openModal(sub);
     subContainer.appendChild(btn);
   });
 }
 
+// ------------------ 모달 ------------------
 function openModal(policy) {
+  recordRecentlyViewed(policy); // ✅ 최근 본 정책 기록 추가
   const modal = document.getElementById('modal');
   const body = document.getElementById('modal-body');
-  let links = '';
-  if(Array.isArray(policy.link)) links = policy.link.map(url => `<a href="${url}" target="_blank">${url}</a>`).join('<br>');
-  else if(policy.link) links = `<a href="${policy.link}" target="_blank">${policy.link}</a>`;
-  body.innerHTML = `<h2>${policy.name || policy.title}</h2><p>${policy.details}</p><div>${links}</div>`;
+  const isFav = isFavorite(policy.id);
+  const star = isFav ? '⭐' : '☆';
+
+  let linksHtml = '';
+  if (Array.isArray(policy.links)) {
+    linksHtml = policy.links.map(l => `<a href="${l.url}" target="_blank">${l.name}</a>`).join('<br>');
+  } else if (Array.isArray(policy.link)) {
+    linksHtml = policy.link.map(url => `<a href="${url}" target="_blank">${url}</a>`).join('<br>');
+  } else if (policy.link) {
+    linksHtml = `<a href="${policy.link}" target="_blank">${policy.link}</a>`;
+  }
+
+  body.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2>${policy.name || policy.title}</h2>
+      <span id="fav-modal" style="cursor:pointer; font-size:1.5em;">${star}</span>
+    </div>
+    <p>${policy.details || policy.description}</p>
+    <div>${linksHtml}</div>
+  `;
+
+  document.getElementById('fav-modal').onclick = (e) => {
+    e.stopPropagation();
+    toggleFavorite(policy.id, policy.name || policy.title, !!policy.name, e.target);
+  };
+
   modal.style.display = 'block';
 }
 
 function closeModal() { document.getElementById('modal').style.display = 'none'; }
+
+// ------------------ 즐겨찾기 ------------------
+function toggleFavorite(id, title, isSub, element) {
+  const region = document.getElementById('region-select').value || 'jeonbuk';
+  let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+  const index = favorites.findIndex(f => f.id === id && f.region === region);
+
+  if (index > -1) {
+    favorites.splice(index, 1);
+    if (element) element.textContent = '☆';
+  } else {
+    favorites.push({ id, title, isSub, region });
+    if (element) element.textContent = '⭐';
+  }
+
+  localStorage.setItem('favorites', JSON.stringify(favorites));
+}
+
+function isFavorite(id) {
+  const region = document.getElementById('region-select').value || 'jeonbuk';
+  const favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+  return favorites.some(f => f.id === id && f.region === region);
+}
+
+// 즐겨찾기 보기 (선택한 지역만)
+function showFavorites() {
+  const container = document.getElementById('policy-container');
+  const subContainer = document.getElementById('sub-category-container');
+
+  subContainer.style.display = 'none';
+  subContainer.innerHTML = '';
+
+  const selectedRegion = document.getElementById('region-select').value || 'jeonbuk';
+  container.innerHTML = `<h2>⭐ 즐겨찾기한 정책</h2>`;
+  
+  const favorites = (JSON.parse(localStorage.getItem('favorites')) || [])
+                     .filter(f => f.isSub && f.region === selectedRegion);
+
+  if (favorites.length === 0) {
+    container.innerHTML += '<p>즐겨찾기한 정책이 없습니다.</p>';
+    return;
+  }
+
+  let allSubs = [];
+  Object.values(policies).forEach(cat => {
+    cat.forEach(p => {
+      if (p.subcategories) allSubs.push(...p.subcategories);
+    });
+  });
+
+  favorites.forEach(fav => {
+    const found = allSubs.find(s => s.id === fav.id);
+    if (found) {
+      const card = document.createElement('div');
+      card.className = 'policy-card';
+
+      let linksHtml = '';
+      if (Array.isArray(found.links)) {
+        linksHtml = found.links.map(l => `<a href="${l.url}" target="_blank">${l.name}</a>`).join('<br>');
+      } else if (found.link) {
+        linksHtml = `<a href="${found.link}" target="_blank">${found.link}</a>`;
+      }
+
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2>${found.name}</h2>
+          <span id="fav-${found.id}" style="cursor:pointer; font-size:1.5em;">⭐</span>
+        </div>
+        <p class="policy-description">${found.details}</p>
+        <div>${linksHtml}</div>
+      `;
+
+      card.querySelector(`#fav-${found.id}`).onclick = (e) => {
+        e.stopPropagation();
+        toggleFavorite(found.id, found.name, true, e.target);
+        card.remove();
+      };
+
+      card.onclick = () => openModal(found);
+      container.appendChild(card);
+    }
+  });
+}
+
+// ------------------ 📄 최근 본 정책 기능 ------------------
+
+// 정책 열람 시 기록
+function recordRecentlyViewed(policy) {
+  let viewed = JSON.parse(localStorage.getItem('recentlyViewed')) || [];
+  const region = document.getElementById('region-select').value || '전체지역';
+
+  viewed = viewed.filter(p => !(p.id === policy.id && p.region === region));
+
+  viewed.unshift({
+    id: policy.id,
+    title: policy.name || policy.title,
+    region,
+    viewedAt: new Date().toISOString()
+  });
+
+  if (viewed.length > 10) viewed = viewed.slice(0, 10);
+  localStorage.setItem('recentlyViewed', JSON.stringify(viewed));
+}
+
+// 최근 본 정책 보기
+function showRecent() {
+  const container = document.getElementById('policy-container');
+  const subContainer = document.getElementById('sub-category-container');
+  subContainer.style.display = 'none';
+  subContainer.innerHTML = '';
+
+  container.innerHTML = '<h2>📄 최근 본 정책</h2>';
+  const recent = JSON.parse(localStorage.getItem('recentlyViewed')) || [];
+
+  if (recent.length === 0) {
+    container.innerHTML += '<p>최근 본 정책이 없습니다.</p>';
+    return;
+  }
+
+  recent.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'policy-card';
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between;">
+        <h3>${item.title}</h3>
+        <span style="font-size:0.8em; color:#888;">${new Date(item.viewedAt).toLocaleString()}</span>
+      </div>
+      <p class="policy-source">${item.region}</p>
+    `;
+    card.onclick = () => reopenPolicy(item.id);
+    container.appendChild(card);
+  });
+}
+
+// 최근 본 정책 다시 열기
+function reopenPolicy(id) {
+  let found = null;
+  Object.values(policies).forEach(cat => {
+    cat.forEach(p => {
+      if (p.id === id) found = p;
+      if (p.subcategories) {
+        const sub = p.subcategories.find(s => s.id === id);
+        if (sub) found = sub;
+      }
+    });
+  });
+  if (found) openModal(found);
+}
 </script>
 </body>
 </html>
-
