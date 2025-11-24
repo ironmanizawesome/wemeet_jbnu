@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>작물 추천 • 귀농 청년</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="app-body recommend-body">
+    <header class="top-nav">
+      <div class="top-nav__left">
+        <div class="top-nav__logo">GN</div>
+        <div class="top-nav__title">귀농 청년 맞춤 추천</div>
+      </div>
+      <nav class="top-nav__menu">
+        <a href="main.html">대시보드</a>
+        <a href="calendar.html">일정</a>
+        <a href="policy.html">정책</a>
+        <a href="recommend.html" class="active">추천</a>
+      </nav>
+    </header>
+
+    <main class="recommend-wrapper" aria-labelledby="recommendTitle">
+      <section class="recommend-card" aria-label="추천 조건">
+        <h1 id="recommendTitle">추천 조건 선택</h1>
+        <p class="recommend-card__desc">
+          재배 시기, 난이도, 햇빛 조건을 선택하면 FastAPI 추천 엔진이 바로 결과를 돌려줍니다.
+        </p>
+
+        <form id="recommend-form" class="recommend-form">
+          <label class="field">
+            <span>재배 시기</span>
+            <select name="season">
+              <option value="">선택 안 함</option>
+              <option value="봄">봄</option>
+              <option value="여름">여름</option>
+              <option value="가을">가을</option>
+              <option value="겨울">겨울</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>난이도</span>
+            <select name="level">
+              <option value="">선택 안 함</option>
+              <option value="하">하</option>
+              <option value="중">중</option>
+              <option value="상">상</option>
+              <option value="최상">최상</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>햇빛 조건</span>
+            <select name="sunlight">
+              <option value="">선택 안 함</option>
+              <option value="햇빛">햇빛</option>
+              <option value="그늘">그늘</option>
+            </select>
+          </label>
+
+          <button type="submit" class="recommend-submit">추천받기</button>
+        </form>
+
+        <p id="recommend-status" class="recommend-status" role="status" aria-live="polite">
+          조건을 선택하고 추천을 받아보세요.
+        </p>
+      </section>
+
+      <section class="recommend-results" aria-live="polite">
+        <div class="condition-card" id="condition-card">
+          <p><strong>현재 조건</strong></p>
+          <p>재배 시기: 모든 시기</p>
+          <p>난이도: 모든 수준</p>
+          <p>햇빛 조건: 상관없음</p>
+        </div>
+
+        <ul class="result-list" id="recommend-list"></ul>
+        <p class="no-result" id="recommend-empty">조건에 맞는 작물이 없습니다.</p>
+      </section>
+    </main>
+
+    <script type="module" src="recommend.js"></script>
+  </body>
+</html>

@@ -212,15 +212,28 @@
   form.addEventListener('submit', (e) => {
     e.preventDefault(); // 폼이 실제로 서버로 전송되지 않도록 함
 
+    errorBox.classList.remove('show');
+    okBox.classList.remove('show');
+
+    const emailValue = email.value.trim();
+    const passwordValue = password.value.trim();
+
     // 간단한 유효성 검사
-    if (!email.value || !password.value) {
+    if (!emailValue || !passwordValue) {
       errorBox.textContent = '이메일과 비밀번호를 입력하세요.';
       errorBox.classList.add('show');
       return;
     }
 
-    // 유효성 통과 시 main.html로 이동
-    window.location.href = 'main.html';
+    sessionStorage.setItem('userEmail', emailValue);
+    sessionStorage.setItem('userName', (emailValue.split('@')[0] || '').toUpperCase());
+
+    okBox.textContent = '로그인 성공! 대시보드로 이동합니다.';
+    okBox.classList.add('show');
+
+    setTimeout(() => {
+      window.location.href = 'main.html';
+    }, 300);
   });
 </script>
 
