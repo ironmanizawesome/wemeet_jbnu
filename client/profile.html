@@ -171,19 +171,28 @@
   <footer class="footer">© <span id="year"></span> 귀농 청년 에이전트</footer>
 
   <script>
-    // 공통: 아바타/메뉴/연도
+    const API_BASE = window.API_BASE_URL || "http://127.0.0.1:8000";
+    const PROFILE_ENDPOINT = `${API_BASE}/profile`;
+
+    // 공통: 로그인 정보
+    const username = sessionStorage.getItem('username') || sessionStorage.getItem('userName') || '';
     const email = sessionStorage.getItem('userEmail') || '';
-    const nameFromEmail = email ? email.split('@')[0] : '';
+    const nameFromEmail = email ? email.split('@')[0] : username;
+    if (!username && !email) {
+      alert('로그인이 필요합니다.');
+      window.location.href = 'login.html';
+    }
+    
+    // userId는 username을 우선 사용, 없으면 email 사용
+    const userId = username || email;
+
     const avatar = document.getElementById('avatar');
     const menu = document.getElementById('menu');
     const userEmailLabel = document.getElementById('userEmailLabel');
     document.getElementById('year').textContent = new Date().getFullYear();
-
-    if(email){
-      userEmailLabel.textContent = email;
-      avatar.title = email + ' • 프로필 및 설정';
-      avatar.textContent = (nameFromEmail[0] || 'U').toUpperCase();
-    }
+    userEmailLabel.textContent = email;
+    avatar.title = email + ' • 프로필 및 설정';
+    avatar.textContent = (nameFromEmail[0] || 'U').toUpperCase();
 
     function toggleMenu(show) {
       const isShow = show ?? !menu.classList.contains('show');
@@ -199,6 +208,19 @@
       if(!menu.contains(e.target) && e.target !== avatar){ toggleMenu(false); }
     });
     document.getElementById('logoutLink').addEventListener('click', () => sessionStorage.clear());
+
+    // 폼 요소 참조
+    const region = document.getElementById('region');
+    const regionDetail = document.getElementById('region-detail');
+    const landSize = document.getElementById('land-size');
+    const landUnit = document.getElementById('land-unit');
+    const workforce = document.getElementById('workforce');
+    const capital = document.getElementById('capital');
+    const capitalUnit = document.getElementById('capital-unit');
+    const age = document.getElementById('age');
+    const experience = document.getElementById('experience');
+    const experienceYears = document.getElementById('experience-years');
+    const hasCert = document.getElementById('has-cert');
 
     // 작물 칩 관리
     const chipGroup = document.getElementById('chipGroup');
@@ -246,11 +268,75 @@
     });
     choiceButtons.forEach(btn => btn.addEventListener('click', () => addCrop(btn.dataset.crop)));
 
-    // 유효성 검사 & 제출
-    const form = document.getElementById('profileForm');
-    const msg = document.getElementById('formMessage');
-    form.addEventListener('submit', (e) => {
-      // 간단한 커스텀 검증
+    const parseFloatSafe = (value) => {
+      const num = parseFloat(value);
+      return Number.isFinite(num) ? num : null;
+    };
+
+    const parseIntSafe = (value) => {
+      const num = parseInt(value, 10);
+      return Number.isFinite(num) ? num : null;
+    };
+
+    function buildPayload() {
+      return {
+        userId: userId,
+        region: region.value || null,
+        region_detail: regionDetail.value.trim() || null,
+        land_size: parseFloatSafe(landSize.value),
+        land_unit: landUnit.value || null,
+        workforce: parseIntSafe(workforce.value),
+        capital_amount: parseFloatSafe(capital.value),
+        capital_unit: capitalUnit.value || null,
+        age: parseIntSafe(age.value),
+        experience: experience.value || null,
+        experience_years: parseFloatSafe(experienceYears.value),
+        has_cert: hasCert.checked,
+        crops: crops,
+      };
+    }
+
+    function fillForm(profile) {
+      if (profile.region) region.value = profile.region;
+      if (profile.region_detail) regionDetail.value = profile.region_detail;
+      if (profile.land_size !== undefined && profile.land_size !== null) landSize.value = profile.land_size;
+      if (profile.land_unit) landUnit.value = profile.land_unit;
+      if (profile.workforce !== undefined && profile.workforce !== null) workforce.value = profile.workforce;
+      if (profile.capital_amount !== undefined && profile.capital_amount !== null) capital.value = profile.capital_amount;
+      if (profile.capital_unit) capitalUnit.value = profile.capital_unit;
+      if (profile.age !== undefined && profile.age !== null) age.value = profile.age;
+      if (profile.experience) experience.value = profile.experience;
+      if (profile.experience_years !== undefined && profile.experience_years !== null) experienceYears.value = profile.experience_years;
+      if (typeof profile.has_cert === 'boolean') hasCert.checked = profile.has_cert;
+      if (Array.isArray(profile.crops)) {
+        crops = [...profile.crops];
+        updateCrops();
+      }
+    }
+
+    async function loadProfile() {
+      const msg = document.getElementById('formMessage');
+      msg.textContent = '프로필을 불러오는 중입니다...';
+      msg.className = 'form-message';
+
+      try {
+        const res = await fetch(`${PROFILE_ENDPOINT}/${encodeURIComponent(userId)}`);
+        if (!res.ok) throw new Error('불러오기 실패');
+        const data = await res.json();
+        if (data.profile) {
+          fillForm(data.profile);
+        }
+        msg.textContent = '';
+      } catch (error) {
+        msg.textContent = '기존 프로필을 불러오지 못했습니다. 새로 입력해 주세요.';
+        msg.className = 'form-message form-message--error';
+      }
+    }
+
+    async function submitProfile(e) {
+      e.preventDefault();
+      const msg = document.getElementById('formMessage');
+
       const requiredIds = ['region','land-size','workforce','capital','age','experience'];
       let ok = true;
       requiredIds.forEach(id => {
@@ -264,23 +350,44 @@
       });
 
       if(!ok){
-        e.preventDefault();
         msg.textContent = '필수 항목을 확인해 주세요.';
         msg.className = 'form-message form-message--error';
         return;
       }
 
-      // 단위 보조 전처리 예시 (선택)
-      // 필요 시 서버 규격에 맞춰 변환 로직 추가
       msg.textContent = '저장 중…';
       msg.className = 'form-message';
-    });
 
-    // 포커스 해제 시 에러 클래스 제거
+      try {
+        const res = await fetch(PROFILE_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildPayload()),
+        });
+
+        if(!res.ok){
+          throw new Error(await res.text());
+        }
+
+        await res.json();
+        msg.textContent = '프로필이 저장되었습니다.';
+        msg.className = 'form-message form-message--success';
+      } catch (error) {
+        msg.textContent = '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+        msg.className = 'form-message form-message--error';
+      }
+    }
+
+    // 폼 이벤트 바인딩
+    const form = document.getElementById('profileForm');
+    form.addEventListener('submit', submitProfile);
+
     document.querySelectorAll('input, select').forEach(el => {
       el.addEventListener('input', () => el.classList.remove('invalid'));
       el.addEventListener('change', () => el.classList.remove('invalid'));
     });
+
+    loadProfile();
   </script>
 </body>
 </html>

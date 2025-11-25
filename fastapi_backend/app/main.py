@@ -1,6 +1,6 @@
 # app/main.py
 import os
-from typing import Optional
+from typing import List, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from pymongo import MongoClient
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from .recommendation import CropRecommendationService
 
 
 # =========================================================
@@ -55,6 +56,16 @@ app.add_middleware(
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[MONGO_DB_NAME]
 profiles_collection = db["profiles"]
+users_collection = db["users"]
+
+# 초기 사용자 데이터 설정 (이미 있으면 건너뜀)
+if users_collection.count_documents({"username": "nongbi"}) == 0:
+    users_collection.insert_one({
+        "username": "nongbi",
+        "password": "1234",  # 실제 운영 환경에서는 해시화 필요
+        "email": "nongbi@example.com"
+    })
+    print("✅ 초기 사용자 데이터 생성 완료 (nongbi/1234)")
 
 # =========================================================
 # 4. LangChain 설정
@@ -92,9 +103,19 @@ prompt = ChatPromptTemplate.from_messages(
 class Profile(BaseModel):
     userId: str
     region: Optional[str] = None
+    region_detail: Optional[str] = None
+    land_size: Optional[float] = None
+    land_unit: Optional[str] = None
     land_area: Optional[str] = None
+    workforce: Optional[int] = None
+    capital_amount: Optional[float] = None
+    capital_unit: Optional[str] = None
     capital: Optional[str] = None
+    age: Optional[int] = None
     experience: Optional[str] = None
+    experience_years: Optional[float] = None
+    has_cert: Optional[bool] = None
+    crops: Optional[List[str]] = None
 
 
 class ChatRequest(BaseModel):
@@ -105,6 +126,36 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
 
+
+class Crop(BaseModel):
+    name: str
+    season: Optional[str] = None
+    purpose: Optional[str] = None
+    level: Optional[str] = None
+    environment: Optional[str] = None
+
+
+class RecommendationRequest(BaseModel):
+    season: Optional[str] = None
+    level: Optional[str] = None
+    sunlight: Optional[str] = None
+
+
+class RecommendationResponse(BaseModel):
+    results: List[Crop]
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    success: bool
+    message: str
+    username: Optional[str] = None
+    email: Optional[str] = None
+
 # =========================================================
 # 6. 헬스 체크 API
 # =========================================================
@@ -113,13 +164,69 @@ def health():
     return {"status": "ok"}
 
 # =========================================================
+# 6-1. 로그인 API
+# =========================================================
+@app.post("/auth/login", response_model=LoginResponse)
+def login(req: LoginRequest):
+    # 사용자 조회
+    user = users_collection.find_one({"username": req.username}, {"_id": False})
+    
+    if not user:
+        return LoginResponse(
+            success=False,
+            message="아이디 또는 비밀번호가 올바르지 않습니다."
+        )
+    
+    # 비밀번호 확인 (실제 운영 환경에서는 해시 비교 필요)
+    if user.get("password") != req.password:
+        return LoginResponse(
+            success=False,
+            message="아이디 또는 비밀번호가 올바르지 않습니다."
+        )
+    
+    # 로그인 성공
+    return LoginResponse(
+        success=True,
+        message="로그인 성공",
+        username=user.get("username"),
+        email=user.get("email")
+    )
+
+# =========================================================
 # 7. 프로필 저장 / 업데이트
 # =========================================================
+def build_profile_payload(profile: Profile) -> dict:
+    payload = profile.dict()
+
+    if payload.get("land_size") is not None:
+        unit = payload.get("land_unit") or ""
+        payload["land_area"] = f"{payload['land_size']} {unit}".strip()
+
+    if payload.get("capital_amount") is not None:
+        unit = payload.get("capital_unit") or ""
+        payload["capital"] = f"{payload['capital_amount']} {unit}".strip()
+
+    if payload.get("crops") is None:
+        payload["crops"] = []
+
+    if payload.get("has_cert") is not None:
+        payload["has_cert"] = bool(payload["has_cert"])
+
+    return payload
+
+
+@app.get("/profile/{user_id}")
+def get_profile(user_id: str):
+    stored = profiles_collection.find_one({"userId": user_id}, {"_id": False})
+    return {"ok": bool(stored), "profile": stored}
+
+
 @app.post("/profile")
 def save_profile(profile: Profile):
+    payload = build_profile_payload(profile)
     profiles_collection.update_one(
         {"userId": profile.userId},
-        {"$set": profile.dict()},
+        {"$set": payload},
         upsert=True,
     )
     stored = profiles_collection.find_one({"userId": profile.userId}, {"_id": False})
@@ -160,3 +267,19 @@ def chat(req: ChatRequest):
 
     answer_text = result.content if hasattr(result, "content") else str(result)
     return ChatResponse(answer=answer_text)
+
+
+# =========================================================
+# 9. 작물 추천
+# =========================================================
+recommendation_service = CropRecommendationService()
+
+
+@app.post("/recommendations", response_model=RecommendationResponse)
+def create_recommendations(payload: RecommendationRequest):
+    matches = recommendation_service.recommend(
+        season=payload.season,
+        level=payload.level,
+        sunlight=payload.sunlight,
+    )
+    return {"results": matches}
