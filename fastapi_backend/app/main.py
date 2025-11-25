@@ -56,6 +56,16 @@ app.add_middleware(
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[MONGO_DB_NAME]
 profiles_collection = db["profiles"]
+users_collection = db["users"]
+
+# 초기 사용자 데이터 설정 (이미 있으면 건너뜀)
+if users_collection.count_documents({"username": "nongbi"}) == 0:
+    users_collection.insert_one({
+        "username": "nongbi",
+        "password": "1234",  # 실제 운영 환경에서는 해시화 필요
+        "email": "nongbi@example.com"
+    })
+    print("✅ 초기 사용자 데이터 생성 완료 (nongbi/1234)")
 
 # =========================================================
 # 4. LangChain 설정
@@ -134,12 +144,53 @@ class RecommendationRequest(BaseModel):
 class RecommendationResponse(BaseModel):
     results: List[Crop]
 
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    success: bool
+    message: str
+    username: Optional[str] = None
+    email: Optional[str] = None
+
 # =========================================================
 # 6. 헬스 체크 API
 # =========================================================
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# =========================================================
+# 6-1. 로그인 API
+# =========================================================
+@app.post("/auth/login", response_model=LoginResponse)
+def login(req: LoginRequest):
+    # 사용자 조회
+    user = users_collection.find_one({"username": req.username}, {"_id": False})
+    
+    if not user:
+        return LoginResponse(
+            success=False,
+            message="아이디 또는 비밀번호가 올바르지 않습니다."
+        )
+    
+    # 비밀번호 확인 (실제 운영 환경에서는 해시 비교 필요)
+    if user.get("password") != req.password:
+        return LoginResponse(
+            success=False,
+            message="아이디 또는 비밀번호가 올바르지 않습니다."
+        )
+    
+    # 로그인 성공
+    return LoginResponse(
+        success=True,
+        message="로그인 성공",
+        username=user.get("username"),
+        email=user.get("email")
+    )
 
 # =========================================================
 # 7. 프로필 저장 / 업데이트

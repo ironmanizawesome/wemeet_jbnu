@@ -175,12 +175,16 @@
     const PROFILE_ENDPOINT = `${API_BASE}/profile`;
 
     // 공통: 로그인 정보
+    const username = sessionStorage.getItem('username') || sessionStorage.getItem('userName') || '';
     const email = sessionStorage.getItem('userEmail') || '';
-    const nameFromEmail = email ? email.split('@')[0] : '';
-    if (!email) {
+    const nameFromEmail = email ? email.split('@')[0] : username;
+    if (!username && !email) {
       alert('로그인이 필요합니다.');
       window.location.href = 'login.html';
     }
+    
+    // userId는 username을 우선 사용, 없으면 email 사용
+    const userId = username || email;
 
     const avatar = document.getElementById('avatar');
     const menu = document.getElementById('menu');
@@ -276,7 +280,7 @@
 
     function buildPayload() {
       return {
-        userId: email,
+        userId: userId,
         region: region.value || null,
         region_detail: regionDetail.value.trim() || null,
         land_size: parseFloatSafe(landSize.value),
@@ -316,7 +320,7 @@
       msg.className = 'form-message';
 
       try {
-        const res = await fetch(`${PROFILE_ENDPOINT}/${encodeURIComponent(email)}`);
+        const res = await fetch(`${PROFILE_ENDPOINT}/${encodeURIComponent(userId)}`);
         if (!res.ok) throw new Error('불러오기 실패');
         const data = await res.json();
         if (data.profile) {

@@ -289,7 +289,9 @@
 
     // 프로필 업데이트 라우트 예시 (원하면 쿼리로 이메일 전달)
     document.getElementById('profileLink').addEventListener('click', (e) => {
-      if(email){ e.currentTarget.href = `/profile?email=${encodeURIComponent(email)}`; }
+      if(email){ 
+        e.currentTarget.href = `profile.html?email=${encodeURIComponent(email)}`; 
+      }
     });
   </script>
 </body>
