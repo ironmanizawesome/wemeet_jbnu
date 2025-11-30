@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>농사 스케줄 관리</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>🌾 농사 스케줄 관리</h1>
+  </header>
+
+  <main class="container">
+    <section class="calendar-section">
+      <div class="calendar-header">
+        <button class="nav-btn" id="prev">&lt;</button>
+        <h2 id="monthYear">2025년 11월</h2>
+        <button class="nav-btn" id="next">&gt;</button>
+      </div>
+      <div class="calendar-grid">
+        <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
+        <!-- 날짜 자리 -->
+        <div class="day">1</div><div class="day">2</div><div class="day">3</div><div class="day">4</div><div class="day">5</div><div class="day">6</div><div class="day">7</div>
+        <div class="day">8</div><div class="day">9</div><div class="day">10</div><div class="day">11</div><div class="day">12</div><div class="day">13</div><div class="day">14</div>
+        <div class="day">15</div><div class="day">16</div><div class="day">17</div><div class="day">18</div><div class="day">19</div><div class="day">20</div><div class="day">21</div>
+        <div class="day">22</div><div class="day">23</div><div class="day">24</div><div class="day">25</div><div class="day">26</div><div class="day">27</div><div class="day">28</div>
+        <div class="day">29</div><div class="day">30</div><div class="day">31</div>
+      </div>
+    </section>
+
+    <section class="todo-section">
+      <h3>📋 To-Do List</h3>
+      <ul>
+      </ul>
+      <input type="text" placeholder="할 일 추가..." />
+      <button>추가</button>
+    </section>
+
+    <section class="diary-section">
+      <h3>📓 농사 일지</h3>
+      <textarea placeholder="오늘의 농사를 기록하세요! AI코치가 피드백을 줍니다."></textarea>
+      <input type="file" accept="image/*" />
+      <button>사진첨부</button>
+      <button class="feedback-btn" onclick="location.href='feedback.html'">AI 피드백</button>
+    </section>
+  </main>
+
+  <footer>
+    <p>© 2025 위밋 프로젝트</p>
+  </footer>
+  <script src="script.js"></script>
+</body>
+</html>

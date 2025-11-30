@@ -1,8 +1,9 @@
 # app/main.py
 import os
+from datetime import datetime
 from typing import List, Optional
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -57,6 +58,7 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[MONGO_DB_NAME]
 profiles_collection = db["profiles"]
 users_collection = db["users"]
+diaries_collection = db["diaries"]
 
 # 초기 사용자 데이터 설정 (이미 있으면 건너뜀)
 if users_collection.count_documents({"username": "nongbi"}) == 0:
@@ -94,6 +96,36 @@ prompt = ChatPromptTemplate.from_messages(
     [
         ("system", system_template),
         ("human", "{user_message}"),
+    ]
+)
+
+feedback_system_template = """
+당신은 농가 운영을 코칭하는 'AI 농사 코치'입니다.
+항상 존댓말을 쓰고, 복잡한 전문 용어는 설명을 덧붙입니다.
+사용자가 작성한 농사 일지와 할 일 목록을 검토하여
+1) 칭찬할 점, 2) 주의/개선 사항, 3) 다음 행동 제안을 간결하게 제공합니다.
+
+사용자 프로필(선택):
+{profile_hint}
+
+오늘 농사 일지:
+{diary}
+
+할 일 목록/상태:
+{todo_hint}
+
+사용자 추가 요청:
+{question}
+
+규칙:
+- 일지에 없는 내용은 추측하지 않습니다.
+- 실행 가능한 조언을 2~3개 제안합니다.
+- 필요한 경우 체크리스트나 우선순위를 제공합니다.
+"""
+
+feedback_prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", feedback_system_template),
     ]
 )
 
@@ -155,6 +187,58 @@ class LoginResponse(BaseModel):
     message: str
     username: Optional[str] = None
     email: Optional[str] = None
+
+
+class TodoItem(BaseModel):
+    text: str
+    checked: bool = False
+
+
+class FeedbackRequest(BaseModel):
+    userId: Optional[str] = None
+    diary: str
+    todos: Optional[List[TodoItem]] = None
+    question: Optional[str] = None
+
+
+class FeedbackResponse(BaseModel):
+    feedback: str
+
+
+class DiaryRequest(BaseModel):
+    userId: str
+    content: str
+    date: Optional[str] = None
+    todos: Optional[List[TodoItem]] = None
+    photo_url: Optional[str] = None
+
+
+class DiaryEntryResponse(BaseModel):
+    id: str
+    userId: str
+    content: str
+    date: Optional[str] = None
+    todos: List[TodoItem] = []
+    photo_url: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class DiaryListResponse(BaseModel):
+    diaries: List[DiaryEntryResponse]
+
+
+def serialize_diary(doc: dict) -> DiaryEntryResponse:
+    return DiaryEntryResponse(
+        id=str(doc["_id"]),
+        userId=doc["userId"],
+        content=doc.get("content", ""),
+        date=doc.get("date"),
+        todos=[TodoItem(**item) if isinstance(item, dict) else TodoItem(text=str(item)) for item in doc.get("todos", [])],
+        photo_url=doc.get("photo_url"),
+        created_at=doc["created_at"].isoformat(),
+        updated_at=doc["updated_at"].isoformat(),
+    )
 
 # =========================================================
 # 6. 헬스 체크 API
@@ -270,7 +354,79 @@ def chat(req: ChatRequest):
 
 
 # =========================================================
-# 9. 작물 추천
+# 9. 농사 일지 AI 피드백
+# =========================================================
+@app.post("/feedback", response_model=FeedbackResponse)
+def create_feedback(payload: FeedbackRequest):
+    diary = (payload.diary or "").strip()
+    if not diary:
+        raise HTTPException(status_code=400, detail="농사 일지 내용이 필요합니다.")
+
+    profile_doc = None
+    profile_hint = "등록된 프로필이 없습니다."
+    if payload.userId:
+        profile_doc = profiles_collection.find_one({"userId": payload.userId}, {"_id": False})
+        profile_hint = profile_to_hint(profile_doc)
+
+    todos = payload.todos or []
+    if todos:
+        todo_hint_parts = []
+        for item in todos:
+            status = "[완료]" if item.checked else "[진행중]"
+            todo_hint_parts.append(f"{status} {item.text}")
+        todo_hint = "\n".join(f"- {text}" for text in todo_hint_parts)
+    else:
+        todo_hint = "등록된 할 일 정보 없음"
+
+    question = payload.question.strip() if payload.question else "일지 전반에 대한 코칭을 제공해주세요."
+
+    chain = feedback_prompt | llm
+    result = chain.invoke(
+        {
+            "profile_hint": profile_hint,
+            "diary": diary,
+            "todo_hint": todo_hint,
+            "question": question,
+        }
+    )
+    advice = result.content if hasattr(result, "content") else str(result)
+    return FeedbackResponse(feedback=advice)
+
+# =========================================================
+# 10. 농사 일지 저장 / 조회
+# =========================================================
+@app.post("/diaries", response_model=DiaryEntryResponse)
+def create_diary(payload: DiaryRequest):
+    if not payload.userId:
+        raise HTTPException(status_code=400, detail="userId가 필요합니다.")
+
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="농사 일지 내용이 비어 있습니다.")
+
+    now = datetime.utcnow()
+    doc = {
+        "userId": payload.userId,
+        "content": content,
+        "date": payload.date or now.strftime("%Y-%m-%d"),
+        "todos": [todo.dict() for todo in (payload.todos or [])],
+        "photo_url": payload.photo_url,
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = diaries_collection.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return serialize_diary(doc)
+
+
+@app.get("/diaries/{user_id}", response_model=DiaryListResponse)
+def list_diaries(user_id: str):
+    cursor = diaries_collection.find({"userId": user_id}).sort("created_at", -1)
+    diaries = [serialize_diary(doc) for doc in cursor]
+    return DiaryListResponse(diaries=diaries)
+
+# =========================================================
+# 11. 작물 추천
 # =========================================================
 recommendation_service = CropRecommendationService()
 
