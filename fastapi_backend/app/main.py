@@ -1,5 +1,8 @@
 # app/main.py
 import os
+import re
+import hashlib
+import json
 from typing import List, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -9,6 +12,8 @@ from pymongo import MongoClient
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from .recommendation import CropRecommendationService
+from .game_service import get_crop_guide_for_game
+from .game_service import get_crop_guide_for_game
 
 
 # =========================================================
@@ -57,6 +62,8 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client[MONGO_DB_NAME]
 profiles_collection = db["profiles"]
 users_collection = db["users"]
+games_collection = db["games"]  # 게임 상태 저장
+chat_responses_collection = db["chat_responses"]  # 챗봇 응답 캐시
 
 # 초기 사용자 데이터 설정 (이미 있으면 건너뜀)
 if users_collection.count_documents({"username": "nongbi"}) == 0:
@@ -73,7 +80,7 @@ if users_collection.count_documents({"username": "nongbi"}) == 0:
 llm = ChatOpenAI(
     api_key=OPENAI_API_KEY,
     model=OPENAI_MODEL,
-    temperature=0.3,  # 답변 안정성 중심
+    temperature=0.0,  # 최대 일관성을 위해 0으로 설정 (같은 입력에 항상 같은 출력)
 )
 
 system_template = """
@@ -88,6 +95,8 @@ system_template = """
 규칙:
 - 모르는 정보는 아는 척하지 말고, 추가 확인이 필요하다고 말합니다.
 - 너무 긴 답변 대신 핵심 위주로 설명하고, 필요하다면 다음에 무엇을 물어보면 좋을지 한 가지 정도만 제안합니다.
+- 같은 질문에는 항상 동일한 답변을 제공하여 일관성을 유지합니다.
+- 답변은 명확하고 구체적이며, 항상 같은 형식과 구조를 유지합니다.
 """
 
 prompt = ChatPromptTemplate.from_messages(
@@ -155,6 +164,43 @@ class LoginResponse(BaseModel):
     message: str
     username: Optional[str] = None
     email: Optional[str] = None
+
+
+# =========================================================
+# 게임 관련 모델
+# =========================================================
+class GameActionRequest(BaseModel):
+    userId: str
+    cropName: str
+    actionType: str  # "water", "fertilizer", "pesticide"
+    day: int
+    currentHp: int
+    actions: List[dict]
+    previousActions: Optional[List[dict]] = None
+
+
+class GameEvaluateResponse(BaseModel):
+    newHp: int
+    hpChange: int
+    feedback: str
+
+
+class GameStateRequest(BaseModel):
+    userId: str
+    state: dict
+
+
+class HarvestFeedbackRequest(BaseModel):
+    userId: str
+    cropName: str
+    finalHp: int
+    totalDays: int
+    actions: List[dict]
+
+
+class HarvestFeedbackResponse(BaseModel):
+    message: str
+    success: bool
 
 # =========================================================
 # 6. 헬스 체크 API
@@ -252,11 +298,68 @@ def profile_to_hint(profile_doc: Optional[dict]) -> str:
     return ", ".join(parts) if parts else "등록된 프로필이 있으나, 상세 정보가 비어 있습니다."
 
 
+def generate_cache_key(user_message: str, profile_hint: str) -> str:
+    """질문과 프로필 정보를 기반으로 캐시 키 생성"""
+    # 질문과 프로필 정보를 정규화 (공백 제거, 소문자 변환 등)
+    normalized_message = user_message.strip().lower()
+    normalized_profile = profile_hint.strip().lower()
+    
+    # 캐시 키 생성
+    cache_data = f"{normalized_message}|||{normalized_profile}"
+    cache_key = hashlib.sha256(cache_data.encode('utf-8')).hexdigest()
+    return cache_key
+
+
+def get_cached_response(cache_key: str) -> Optional[str]:
+    """캐시에서 응답 가져오기"""
+    cached = chat_responses_collection.find_one({"cache_key": cache_key}, {"_id": False})
+    if cached:
+        return cached.get("answer")
+    return None
+
+
+def save_cached_response(cache_key: str, user_message: str, profile_hint: str, answer: str):
+    """응답을 캐시에 저장"""
+    from datetime import datetime
+    chat_responses_collection.update_one(
+        {"cache_key": cache_key},
+        {
+            "$set": {
+                "cache_key": cache_key,
+                "user_message": user_message,
+                "profile_hint": profile_hint,
+                "answer": answer,
+                "created_at": datetime.now().isoformat(),
+                "last_used": datetime.now().isoformat()
+            }
+        },
+        upsert=True
+    )
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     profile_doc = profiles_collection.find_one({"userId": req.userId}, {"_id": False})
     profile_hint = profile_to_hint(profile_doc)
-
+    
+    # 캐시 키 생성
+    cache_key = generate_cache_key(req.message, profile_hint)
+    
+    # 캐시에서 응답 확인
+    cached_answer = get_cached_response(cache_key)
+    if cached_answer:
+        # 캐시 히트: 마지막 사용 시간 업데이트
+        from datetime import datetime
+        chat_responses_collection.update_one(
+            {"cache_key": cache_key},
+            {"$set": {"last_used": datetime.now().isoformat()}}
+        )
+        print(f"✅ 캐시 히트: {cache_key[:16]}...")
+        return ChatResponse(answer=cached_answer)
+    
+    # 캐시 미스: 새로운 응답 생성
+    print(f"❌ 캐시 미스: {cache_key[:16]}... - 새로운 응답 생성 중")
+    
     chain = prompt | llm
     result = chain.invoke(
         {
@@ -266,7 +369,44 @@ def chat(req: ChatRequest):
     )
 
     answer_text = result.content if hasattr(result, "content") else str(result)
+    
+    # 응답을 캐시에 저장
+    save_cached_response(cache_key, req.message, profile_hint, answer_text)
+    
     return ChatResponse(answer=answer_text)
+
+
+# =========================================================
+# 챗봇 캐시 관리 API (선택적)
+# =========================================================
+
+@app.get("/chat/cache/stats")
+def get_cache_stats():
+    """캐시 통계 정보"""
+    total_count = chat_responses_collection.count_documents({})
+    return {
+        "total_cached_responses": total_count,
+        "collection": "chat_responses"
+    }
+
+
+@app.delete("/chat/cache/clear")
+def clear_cache():
+    """모든 캐시 삭제 (주의: 모든 저장된 응답이 삭제됩니다)"""
+    result = chat_responses_collection.delete_many({})
+    return {
+        "deleted_count": result.deleted_count,
+        "message": "캐시가 모두 삭제되었습니다."
+    }
+
+
+@app.delete("/chat/cache/{cache_key}")
+def delete_cache_item(cache_key: str):
+    """특정 캐시 항목 삭제"""
+    result = chat_responses_collection.delete_one({"cache_key": cache_key})
+    if result.deleted_count > 0:
+        return {"message": f"캐시 항목이 삭제되었습니다. (key: {cache_key[:16]}...)"}
+    return {"message": "해당 캐시 항목을 찾을 수 없습니다."}
 
 
 # =========================================================
@@ -283,3 +423,248 @@ def create_recommendations(payload: RecommendationRequest):
         sunlight=payload.sunlight,
     )
     return {"results": matches}
+
+
+# =========================================================
+# 10. 게임 관련 API
+# =========================================================
+
+# 게임 판단을 위한 시스템 프롬프트
+game_system_template = """
+당신은 농업 다마고치 게임의 판단 시스템입니다.
+
+작물 가이드라인:
+{crop_guide}
+
+사용자가 수행한 행동:
+- 행동 유형: {action_type}
+- 현재 재배 일수: {day}일
+- 현재 HP: {current_hp}/100
+- 최근 행동 이력: {recent_actions}
+
+작물 가이드라인을 기준으로 사용자의 행동을 평가하세요.
+
+규칙:
+1. 가이드라인에 맞는 행동이면 HP가 증가 (최대 +5)
+2. 가이드라인과 약간 다르면 HP 유지 또는 소폭 감소 (-1~-3)
+3. 가이드라인과 많이 다르면 HP 감소 (-5~-10)
+4. 과도한 행동(예: 하루에 여러 번 물주기)이면 HP 감소
+5. 작물에 맞지 않는 행동이면 HP 감소
+
+응답 형식 (JSON):
+{{
+    "hp_change": 숫자 (-10 ~ +5),
+    "feedback": "한 문장 피드백 메시지 (친근하고 다마고치처럼)"
+}}
+
+예시:
+- 좋은 경우: "적절한 물주기! 작물이 건강해졌어요! (+3)"
+- 나쁜 경우: "물을 너무 많이 줬어요. 뿌리가 썩을 수 있어요! (-5)"
+- 중간: "괜찮아요. 조금 더 관심을 기울여보세요! (0)"
+"""
+
+game_prompt = ChatPromptTemplate.from_messages([
+    ("system", game_system_template),
+    ("human", "이 행동을 평가해주세요.")
+])
+
+
+class GameActionRequest(BaseModel):
+    userId: str
+    cropName: str
+    actionType: str  # "water", "fertilizer", "pesticide"
+    day: int
+    currentHp: int
+    actions: List[dict]
+    previousActions: Optional[List[dict]] = None
+
+
+class GameEvaluateResponse(BaseModel):
+    newHp: int
+    hpChange: int
+    feedback: str
+
+
+@app.post("/game/evaluate", response_model=GameEvaluateResponse)
+def evaluate_game_action(req: GameActionRequest):
+    """작물 관리 행동을 평가하고 HP를 계산"""
+    try:
+        # 작물 가이드라인 가져오기
+        crop_guide = get_crop_guide_for_game(req.cropName)
+        
+        # 최근 행동 요약
+        recent_summary = ""
+        if req.previousActions:
+            water_count = sum(1 for a in req.previousActions if a.get("type") == "water")
+            fert_count = sum(1 for a in req.previousActions if a.get("type") == "fertilizer")
+            pest_count = sum(1 for a in req.previousActions if a.get("type") == "pesticide")
+            recent_summary = f"최근 {len(req.previousActions)}일간 - 물주기: {water_count}회, 비료: {fert_count}회, 해충퇴치: {pest_count}회"
+        else:
+            recent_summary = "첫 관리입니다."
+        
+        # 행동 유형 한국어 변환
+        action_kr = {
+            "water": "물주기",
+            "fertilizer": "비료주기",
+            "pesticide": "해충퇴치"
+        }.get(req.actionType, req.actionType)
+        
+        # AI 판단
+        chain = game_prompt | llm
+        result = chain.invoke({
+            "crop_guide": crop_guide,
+            "action_type": action_kr,
+            "day": req.day,
+            "current_hp": req.currentHp,
+            "recent_actions": recent_summary
+        })
+        
+        # JSON 응답 파싱 시도
+        import json
+        try:
+            # JSON 형식으로 응답이 오는 경우
+            response_text = result.content if hasattr(result, "content") else str(result)
+            # JSON 블록 찾기
+            json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
+            if json_match:
+                eval_result = json.loads(json_match.group())
+                hp_change = int(eval_result.get("hp_change", 0))
+                feedback = eval_result.get("feedback", "관리 중입니다.")
+            else:
+                # JSON이 아니면 기본값
+                hp_change = 0
+                feedback = response_text[:100] if response_text else "관리 중입니다."
+        except:
+            # 파싱 실패 시 기본값
+            hp_change = 0
+            feedback = "관리 중입니다."
+        
+        # HP 계산
+        new_hp = max(0, min(100, req.currentHp + hp_change))
+        
+        return GameEvaluateResponse(
+            newHp=new_hp,
+            hpChange=hp_change,
+            feedback=feedback
+        )
+        
+    except Exception as e:
+        print(f"게임 평가 오류: {e}")
+        # 오류 시 기본값 반환
+        return GameEvaluateResponse(
+            newHp=req.currentHp,
+            hpChange=0,
+            feedback="관리 중입니다."
+        )
+
+
+# 게임 상태 저장/불러오기
+class GameStateRequest(BaseModel):
+    userId: str
+    state: dict
+
+
+@app.post("/game/state")
+def save_game_state(req: GameStateRequest):
+    """게임 상태 저장"""
+    from datetime import datetime
+    games_collection.update_one(
+        {"userId": req.userId},
+        {"$set": {"userId": req.userId, "state": req.state, "updatedAt": datetime.now().isoformat()}},
+        upsert=True
+    )
+    return {"ok": True}
+
+
+@app.get("/game/state/{user_id}")
+def get_game_state(user_id: str):
+    """게임 상태 불러오기"""
+    game_doc = games_collection.find_one({"userId": user_id}, {"_id": False})
+    if game_doc and game_doc.get("state"):
+        return {"state": game_doc["state"]}
+    return {"state": None}
+
+
+# 수확 피드백
+harvest_system_template = """
+당신은 농업 다마고치 게임의 수확 피드백 시스템입니다.
+
+작물 가이드라인:
+{crop_guide}
+
+게임 결과:
+- 최종 HP: {final_hp}/100
+- 총 재배 일수: {total_days}일
+- 수행한 행동 수: {action_count}개
+
+작물을 키우는 과정을 평가하고, 수확 전날의 피드백을 작성하세요.
+
+규칙:
+1. HP가 70 이상이면 성공적으로 키운 것으로 판단
+2. HP가 70 미만이면 실패로 판단
+3. 가이드라인을 얼마나 잘 따랐는지 평가
+4. 친근하고 다마고치 캐릭터처럼 대답
+5. 한 문단 정도의 피드백 작성
+
+응답 형식:
+{{
+    "message": "수확 전날 피드백 메시지 (2-3문장)"
+}}
+"""
+
+harvest_prompt = ChatPromptTemplate.from_messages([
+    ("system", harvest_system_template),
+    ("human", "수확 전날 피드백을 작성해주세요.")
+])
+
+
+class HarvestFeedbackRequest(BaseModel):
+    userId: str
+    cropName: str
+    finalHp: int
+    totalDays: int
+    actions: List[dict]
+
+
+class HarvestFeedbackResponse(BaseModel):
+    message: str
+    success: bool
+
+
+@app.post("/game/harvest-feedback", response_model=HarvestFeedbackResponse)
+def get_harvest_feedback(req: HarvestFeedbackRequest):
+    """수확 전날 피드백 생성"""
+    try:
+        crop_guide = get_crop_guide_for_game(req.cropName)
+        
+        chain = harvest_prompt | llm
+        result = chain.invoke({
+            "crop_guide": crop_guide,
+            "final_hp": req.finalHp,
+            "total_days": req.totalDays,
+            "action_count": len(req.actions)
+        })
+        
+        # JSON 파싱 시도
+        import json
+        response_text = result.content if hasattr(result, "content") else str(result)
+        json_match = re.search(r'\{[^{}]*"message"[^{}]*\}', response_text, re.DOTALL)
+        if json_match:
+            eval_result = json.loads(json_match.group())
+            message = eval_result.get("message", "수확하세요!")
+        else:
+            message = response_text[:200] if response_text else "수확하세요!"
+        
+        success = req.finalHp >= 70
+        
+        return HarvestFeedbackResponse(
+            message=message,
+            success=success
+        )
+        
+    except Exception as e:
+        print(f"수확 피드백 오류: {e}")
+        return HarvestFeedbackResponse(
+            message=f"수확 준비가 되었습니다! 최종 건강도: {req.finalHp}/100",
+            success=req.finalHp >= 70
+        )
