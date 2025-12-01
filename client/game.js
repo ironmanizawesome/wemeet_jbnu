@@ -11,6 +11,93 @@ const CROP_ICONS = {
   "부추": "🌿"
 };
 
+// 기상 아이콘 매핑
+const WEATHER_ICONS = {
+  "맑음": "☀️",
+  "비": "🌧️",
+  "눈": "❄️",
+  "흐림": "☁️",
+  "안개": "🌫️",
+  "천둥": "⛈️",
+  "바람": "💨"
+};
+
+// 월별 가능한 기상 상황 및 확률 정의
+const WEATHER_BY_MONTH = {
+  1: [  // 1월 (겨울)
+    { type: "눈", probability: 0.4 },
+    { type: "맑음", probability: 0.3 },
+    { type: "흐림", probability: 0.2 },
+    { type: "비", probability: 0.1 }
+  ],
+  2: [  // 2월 (겨울)
+    { type: "눈", probability: 0.3 },
+    { type: "맑음", probability: 0.3 },
+    { type: "흐림", probability: 0.25 },
+    { type: "비", probability: 0.15 }
+  ],
+  3: [  // 3월 (봄)
+    { type: "비", probability: 0.35 },
+    { type: "맑음", probability: 0.3 },
+    { type: "흐림", probability: 0.25 },
+    { type: "바람", probability: 0.1 }
+  ],
+  4: [  // 4월 (봄)
+    { type: "비", probability: 0.3 },
+    { type: "맑음", probability: 0.35 },
+    { type: "흐림", probability: 0.25 },
+    { type: "바람", probability: 0.1 }
+  ],
+  5: [  // 5월 (봄)
+    { type: "맑음", probability: 0.4 },
+    { type: "비", probability: 0.25 },
+    { type: "흐림", probability: 0.25 },
+    { type: "바람", probability: 0.1 }
+  ],
+  6: [  // 6월 (여름 초)
+    { type: "맑음", probability: 0.35 },
+    { type: "비", probability: 0.3 },
+    { type: "흐림", probability: 0.25 },
+    { type: "천둥", probability: 0.1 }
+  ],
+  7: [  // 7월 (여름)
+    { type: "맑음", probability: 0.4 },
+    { type: "비", probability: 0.25 },
+    { type: "천둥", probability: 0.2 },
+    { type: "흐림", probability: 0.15 }
+  ],
+  8: [  // 8월 (여름)
+    { type: "맑음", probability: 0.4 },
+    { type: "천둥", probability: 0.25 },
+    { type: "비", probability: 0.2 },
+    { type: "흐림", probability: 0.15 }
+  ],
+  9: [  // 9월 (가을)
+    { type: "맑음", probability: 0.35 },
+    { type: "흐림", probability: 0.3 },
+    { type: "비", probability: 0.25 },
+    { type: "바람", probability: 0.1 }
+  ],
+  10: [  // 10월 (가을)
+    { type: "맑음", probability: 0.35 },
+    { type: "흐림", probability: 0.3 },
+    { type: "비", probability: 0.25 },
+    { type: "바람", probability: 0.1 }
+  ],
+  11: [  // 11월 (가을)
+    { type: "흐림", probability: 0.3 },
+    { type: "맑음", probability: 0.3 },
+    { type: "비", probability: 0.25 },
+    { type: "안개", probability: 0.15 }
+  ],
+  12: [  // 12월 (겨울)
+    { type: "눈", probability: 0.35 },
+    { type: "맑음", probability: 0.3 },
+    { type: "흐림", probability: 0.2 },
+    { type: "비", probability: 0.15 }
+  ]
+};
+
 // 게임 설정: 1일 = 실제 시간 1시간 (밀리초 단위)
 const GAME_DAY_LENGTH_MS = 60 * 60 * 1000; // 1시간 = 3600000ms
 // 테스트용으로 더 짧게 설정하려면 아래 주석을 해제하세요:
@@ -28,7 +115,9 @@ let gameState = {
   actions: [], // [{type: "water", day: 1, timestamp: "..."}, ...]
   lastFeedback: null,
   gameStartTime: null, // 게임 시작 시간 (ISO string)
-  lastUpdateTime: null // 마지막 업데이트 시간 (ISO string)
+  lastUpdateTime: null, // 마지막 업데이트 시간 (ISO string)
+  currentWeather: null, // 현재 기상 상황
+  weatherDate: null // 기상이 결정된 날짜
 };
 
 let timeCheckInterval = null; // 시간 체크 인터벌
@@ -46,6 +135,10 @@ const harvestButton = document.getElementById("harvestButton");
 const feedbackMessage = document.getElementById("feedbackMessage");
 const nextDayButton = document.getElementById("nextDayButton");
 
+// 기상 정보 관련 요소
+const weatherIcon = document.getElementById("weatherIcon");
+const weatherText = document.getElementById("weatherText");
+
 // Admin 모드 관련 요소
 const adminPanel = document.getElementById("adminPanel");
 const adminClose = document.getElementById("adminClose");
@@ -56,6 +149,20 @@ const adminSetDayBtn = document.getElementById("adminSetDayBtn");
 const adminSetHp = document.getElementById("adminSetHp");
 const adminSetHpBtn = document.getElementById("adminSetHpBtn");
 const adminResetGame = document.getElementById("adminResetGame");
+
+// 게임 오버 모달 관련 요소
+const gameOverModal = document.getElementById("gameOverModal");
+const restartGameBtn = document.getElementById("restartGameBtn");
+const selectCropBtn = document.getElementById("selectCropBtn");
+
+// 그만두기 버튼
+const exitButton = document.getElementById("exitButton");
+
+// 메뉴 관련 요소
+const menuButton = document.getElementById("menuButton");
+const menuDropdown = document.getElementById("menuDropdown");
+const characterManageMenuItem = document.getElementById("characterManageMenuItem");
+const logoutMenuItem = document.getElementById("logoutMenuItem");
 
 // 로그인 정보 확인 및 게임 상태 로드
 async function initGame() {
@@ -92,6 +199,68 @@ async function initGame() {
       await proceedToNextDay();
     });
   }
+  
+  // 게임 오버 모달 버튼 이벤트 리스너
+  if (restartGameBtn) {
+    restartGameBtn.addEventListener("click", async () => {
+      await restartGame();
+    });
+  }
+  
+  if (selectCropBtn) {
+    selectCropBtn.addEventListener("click", () => {
+      selectDifferentCrop();
+    });
+  }
+  
+  // 그만두기 버튼 이벤트 리스너
+  if (exitButton) {
+    exitButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      exitGame();
+    });
+  }
+  
+  // 메뉴 버튼 이벤트 리스너
+  if (menuButton) {
+    menuButton.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMenu();
+    });
+  }
+  
+  // 내 캐릭터 관리 메뉴 아이템
+  if (characterManageMenuItem) {
+    characterManageMenuItem.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await goToCharacterManage();
+    });
+  }
+  
+  // 로그아웃 메뉴 아이템
+  if (logoutMenuItem) {
+    logoutMenuItem.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await logout();
+    });
+  }
+  
+  // 메뉴 외부 클릭 시 닫기
+  document.addEventListener("click", (e) => {
+    if (menuDropdown && menuButton && menuDropdown.classList.contains("show")) {
+      if (!menuDropdown.contains(e.target) && !menuButton.contains(e.target)) {
+        closeMenu();
+      }
+    }
+  });
+  
+  // ESC 키로 메뉴 닫기
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && menuDropdown && menuDropdown.classList.contains("show")) {
+      closeMenu();
+    }
+  });
 }
 
 // 시간 체크 인터벌 시작
@@ -128,13 +297,26 @@ window.addEventListener("beforeunload", () => {
 // 게임 상태 로드
 async function loadGameState() {
   try {
-    const response = await fetch(`${API_BASE}/game/state/${encodeURIComponent(gameState.userId)}`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data.state) {
-        gameState = { ...gameState, ...data.state };
+    // 새로운 구조에서 작물 목록 가져오기
+    const cropsResponse = await fetch(`${API_BASE}/game/crops/${encodeURIComponent(gameState.userId)}`);
+    
+    if (cropsResponse.ok) {
+      const cropsData = await cropsResponse.json();
+      const crops = cropsData.crops || [];
+      
+      // 선택한 작물 찾기
+      const currentCrop = crops.find(c => c.cropName === gameState.cropName);
+      
+      if (currentCrop) {
+        // 기존 작물 데이터 로드
+        gameState.hp = currentCrop.hp || 100;
+        gameState.day = currentCrop.day || 0;
+        gameState.gameStartTime = currentCrop.gameStartTime || new Date().toISOString();
+        gameState.lastUpdateTime = currentCrop.lastUpdateTime || new Date().toISOString();
+        gameState.currentWeather = currentCrop.currentWeather || null;
+        gameState.weatherDate = currentCrop.weatherDate || null;
         
-        // 게임 시작 시간이 없으면 현재 시간으로 설정 (새 게임)
+        // 게임 시작 시간이 없으면 현재 시간으로 설정
         if (!gameState.gameStartTime) {
           gameState.gameStartTime = new Date().toISOString();
           await saveGameState();
@@ -142,22 +324,36 @@ async function loadGameState() {
         
         // 시간 기반 날짜 계산 및 업데이트
         await updateDayBasedOnTime();
-      } else {
-        // 새 게임 시작
-        gameState.gameStartTime = new Date().toISOString();
-        gameState.day = 0;
-        gameState.hp = 100;
-        gameState.actions = [];
-        await saveGameState();
+        return;
       }
-    } else {
-      // 새 게임 시작
-      gameState.gameStartTime = new Date().toISOString();
-      gameState.day = 0;
-      gameState.hp = 100;
-      gameState.actions = [];
-      await saveGameState();
     }
+    
+    // 하위 호환성: 기존 구조 확인
+    const response = await fetch(`${API_BASE}/game/state/${encodeURIComponent(gameState.userId)}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.state && data.state.cropName === gameState.cropName) {
+        gameState = { ...gameState, ...data.state };
+        
+        if (!gameState.gameStartTime) {
+          gameState.gameStartTime = new Date().toISOString();
+          await saveGameState();
+        }
+        
+        await updateDayBasedOnTime();
+        return;
+      }
+    }
+    
+    // 새 게임 시작
+    gameState.gameStartTime = new Date().toISOString();
+    gameState.day = 0;
+    gameState.hp = 100;
+    gameState.actions = [];
+    gameState.currentWeather = null;
+    gameState.weatherDate = null;
+    await saveGameState();
+    
   } catch (error) {
     console.error("게임 상태 불러오기 실패:", error);
     // 오류 시 새 게임으로 시작
@@ -165,7 +361,46 @@ async function loadGameState() {
     gameState.day = 0;
     gameState.hp = 100;
     gameState.actions = [];
+    gameState.currentWeather = null;
+    gameState.weatherDate = null;
   }
+}
+
+// 현재 날짜(실제 시간)에서 월 가져오기
+function getCurrentMonth() {
+  const now = new Date();
+  return now.getMonth() + 1; // 0-11을 1-12로 변환
+}
+
+// 확률 기반 기상 선택
+function selectWeatherByMonth(month) {
+  const weatherOptions = WEATHER_BY_MONTH[month] || WEATHER_BY_MONTH[12]; // 기본값: 12월
+  const random = Math.random();
+  
+  let cumulativeProbability = 0;
+  for (const option of weatherOptions) {
+    cumulativeProbability += option.probability;
+    if (random <= cumulativeProbability) {
+      return option.type;
+    }
+  }
+  
+  // 마지막 옵션 반환 (예외 처리)
+  return weatherOptions[weatherOptions.length - 1].type;
+}
+
+// 날짜 기반 기상 업데이트
+function updateWeatherBasedOnDate() {
+  const currentMonth = getCurrentMonth();
+  const currentDay = calculateCurrentDay();
+  
+  // 날짜가 바뀌었거나 기상이 아직 설정되지 않았으면 새로 선택
+  if (gameState.weatherDate !== currentDay || !gameState.currentWeather) {
+    gameState.currentWeather = selectWeatherByMonth(currentMonth);
+    gameState.weatherDate = currentDay;
+  }
+  
+  return gameState.currentWeather;
 }
 
 // 시간 기반 날짜 계산
@@ -219,6 +454,10 @@ async function updateDayBasedOnTime() {
     
     gameState.day = calculatedDay;
     gameState.lastUpdateTime = new Date().toISOString();
+    
+    // 날짜가 변경되었으므로 기상 업데이트
+    updateWeatherBasedOnDate();
+    
     await saveGameState();
     updateUI();
   }
@@ -257,6 +496,10 @@ async function proceedToNextDay() {
     
     gameState.day = nextDay;
     gameState.lastUpdateTime = new Date().toISOString();
+    
+    // 날짜가 변경되었으므로 기상 업데이트
+    updateWeatherBasedOnDate();
+    
     await saveGameState();
     updateUI();
     
@@ -275,6 +518,31 @@ async function proceedToNextDay() {
 // 게임 상태 저장
 async function saveGameState() {
   try {
+    // 새로운 구조로 작물 저장 (여러 작물 지원)
+    const cropData = {
+      cropName: gameState.cropName,
+      hp: gameState.hp,
+      day: gameState.day,
+      gameStartTime: gameState.gameStartTime,
+      lastUpdateTime: gameState.lastUpdateTime || new Date().toISOString(),
+      currentWeather: gameState.currentWeather,
+      weatherDate: gameState.weatherDate
+    };
+    
+    const response = await fetch(`${API_BASE}/game/crop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: gameState.userId,
+        crop: cropData
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error("게임 상태 저장 실패");
+    }
+    
+    // 하위 호환성을 위해 기존 API도 호출
     await fetch(`${API_BASE}/game/state`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -303,6 +571,13 @@ function updateUI() {
   const currentDay = calculateCurrentDay();
   dayCount.textContent = currentDay;
   
+  // 기상 정보 업데이트 및 표시
+  updateWeatherBasedOnDate();
+  if (weatherIcon && weatherText && gameState.currentWeather) {
+    weatherIcon.textContent = WEATHER_ICONS[gameState.currentWeather] || "☀️";
+    weatherText.textContent = gameState.currentWeather;
+  }
+  
   // 수확 버튼 표시 여부 (예: 7일 이상 되면)
   if (currentDay >= 7) {
     harvestButton.style.display = "block";
@@ -319,16 +594,18 @@ function updateUI() {
     }
   }
   
-  // HP가 0이면 작물 상태 메시지
+  // HP가 0이면 게임 오버 모달 표시
   if (currentHp <= 0) {
-    showFeedback("작물이 건강하지 않습니다. 게임을 다시 시작해주세요.", "error");
+    showGameOverModal();
+  } else {
+    hideGameOverModal();
   }
 }
 
 // 행동 실행 (물주기, 비료주기, 해충퇴치)
 async function performAction(actionType) {
   if (gameState.hp <= 0) {
-    showFeedback("작물이 건강하지 않습니다. 게임을 다시 시작해주세요.", "error");
+    showGameOverModal();
     return;
   }
 
@@ -397,6 +674,118 @@ async function performAction(actionType) {
     // 버튼 재활성화
     buttons.forEach(btn => btn.disabled = false);
   }
+}
+
+// 게임 오버 모달 표시
+function showGameOverModal() {
+  if (gameOverModal) {
+    gameOverModal.classList.add("show");
+    // 모든 행동 버튼 비활성화
+    [waterButton, fertilizerButton, pesticideButton, harvestButton, nextDayButton].forEach(btn => {
+      if (btn) btn.disabled = true;
+    });
+  }
+}
+
+// 게임 오버 모달 숨김
+function hideGameOverModal() {
+  if (gameOverModal) {
+    gameOverModal.classList.remove("show");
+  }
+}
+
+// 게임 처음부터 다시 시작
+async function restartGame() {
+  if (!confirm("정말 처음부터 다시 시작하시겠습니까? 현재 진행 상황이 모두 초기화됩니다.")) {
+    return;
+  }
+  
+  gameState.gameStartTime = new Date().toISOString();
+  gameState.day = 0;
+  gameState.hp = 100;
+  gameState.actions = [];
+  gameState.lastFeedback = null;
+  gameState.lastUpdateTime = null;
+  gameState.currentWeather = null;
+  gameState.weatherDate = null;
+  
+  await saveGameState();
+  hideGameOverModal();
+  updateUI();
+  
+  // 버튼 재활성화
+  [waterButton, fertilizerButton, pesticideButton].forEach(btn => {
+    if (btn) btn.disabled = false;
+  });
+  
+  showFeedback("게임이 처음부터 다시 시작되었습니다!", "good");
+}
+
+// 다른 작물 선택하기
+function selectDifferentCrop() {
+  if (!confirm("다른 작물을 선택하시겠습니까? 현재 게임 진행 상황은 저장되지 않습니다.")) {
+    return;
+  }
+  
+  // 작물 선택 화면으로 이동
+  window.location.href = "recommend.html";
+}
+
+// 게임 포기하기
+async function exitGame() {
+  if (!confirm("게임을 그만두시겠습니까? 현재 진행 상황은 저장됩니다. 나중에 다시 돌아올 수 있습니다.")) {
+    return;
+  }
+  
+  // 게임 상태 저장 (현재 상태 그대로 저장)
+  await saveGameState();
+  
+  // 캐릭터 관리 페이지로 이동
+  window.location.href = "character-select.html";
+}
+
+// 메뉴 토글
+function toggleMenu() {
+  if (menuDropdown) {
+    menuDropdown.classList.toggle("show");
+  }
+}
+
+// 메뉴 닫기
+function closeMenu() {
+  if (menuDropdown) {
+    menuDropdown.classList.remove("show");
+  }
+}
+
+// 내 캐릭터 관리 페이지로 이동
+async function goToCharacterManage() {
+  // 게임 상태 저장
+  await saveGameState();
+  closeMenu();
+  window.location.href = "character-select.html";
+}
+
+// 로그아웃
+async function logout() {
+  if (!confirm("로그아웃하시겠습니까? 현재 진행 상황은 저장됩니다.")) {
+    return;
+  }
+  
+  // 게임 상태 저장
+  await saveGameState();
+  
+  // 세션 스토리지 정리
+  sessionStorage.removeItem("username");
+  sessionStorage.removeItem("userName");
+  sessionStorage.removeItem("userEmail");
+  sessionStorage.removeItem("cropName");
+  sessionStorage.removeItem("selectedCrop");
+  
+  closeMenu();
+  
+  // 로그인 페이지로 이동
+  window.location.href = "login.html";
 }
 
 // 피드백 메시지 표시
@@ -562,6 +951,8 @@ async function resetGame() {
   gameState.actions = [];
   gameState.lastFeedback = null;
   gameState.lastUpdateTime = null;
+  gameState.currentWeather = null;
+  gameState.weatherDate = null;
   
   await saveGameState();
   updateUI();

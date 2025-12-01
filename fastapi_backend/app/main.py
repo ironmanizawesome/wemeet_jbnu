@@ -566,7 +566,7 @@ class GameStateRequest(BaseModel):
 
 @app.post("/game/state")
 def save_game_state(req: GameStateRequest):
-    """게임 상태 저장"""
+    """게임 상태 저장 (단일 작물 - 하위 호환성)"""
     from datetime import datetime
     games_collection.update_one(
         {"userId": req.userId},
@@ -576,13 +576,111 @@ def save_game_state(req: GameStateRequest):
     return {"ok": True}
 
 
+class CropData(BaseModel):
+    cropName: str
+    hp: int = 100
+    day: int = 0
+    gameStartTime: Optional[str] = None
+    lastUpdateTime: Optional[str] = None
+    currentWeather: Optional[str] = None
+    weatherDate: Optional[int] = None
+
+
+class SaveCropRequest(BaseModel):
+    userId: str
+    crop: CropData
+
+
+@app.post("/game/crop")
+def save_crop(req: SaveCropRequest):
+    """특정 작물 저장 (여러 작물 지원)"""
+    from datetime import datetime
+    
+    # 사용자의 기존 작물 목록 가져오기
+    game_doc = games_collection.find_one({"userId": req.userId})
+    
+    if game_doc and game_doc.get("crops"):
+        crops = game_doc["crops"]
+    else:
+        crops = []
+    
+    # 동일한 작물이 있으면 업데이트, 없으면 추가
+    crop_dict = req.crop.dict()
+    crop_dict["lastUpdateTime"] = datetime.now().isoformat()
+    
+    existing_index = next((i for i, c in enumerate(crops) if c.get("cropName") == req.crop.cropName), None)
+    
+    if existing_index is not None:
+        crops[existing_index] = crop_dict
+    else:
+        if len(crops) >= 2:
+            return {"ok": False, "message": "최대 2개의 작물만 키울 수 있습니다."}
+        crops.append(crop_dict)
+    
+    games_collection.update_one(
+        {"userId": req.userId},
+        {"$set": {"userId": req.userId, "crops": crops, "updatedAt": datetime.now().isoformat()}},
+        upsert=True
+    )
+    return {"ok": True}
+
+
+@app.delete("/game/crop/{user_id}/{crop_name}")
+def delete_crop(user_id: str, crop_name: str):
+    """작물 삭제"""
+    from datetime import datetime
+    
+    game_doc = games_collection.find_one({"userId": user_id})
+    
+    if not game_doc or not game_doc.get("crops"):
+        return {"ok": False, "message": "작물을 찾을 수 없습니다."}
+    
+    crops = game_doc["crops"]
+    crops = [c for c in crops if c.get("cropName") != crop_name]
+    
+    games_collection.update_one(
+        {"userId": user_id},
+        {"$set": {"crops": crops, "updatedAt": datetime.now().isoformat()}}
+    )
+    
+    return {"ok": True}
+
+
 @app.get("/game/state/{user_id}")
 def get_game_state(user_id: str):
-    """게임 상태 불러오기"""
+    """게임 상태 불러오기 (단일 작물 - 하위 호환성)"""
     game_doc = games_collection.find_one({"userId": user_id}, {"_id": False})
     if game_doc and game_doc.get("state"):
         return {"state": game_doc["state"]}
     return {"state": None}
+
+
+@app.get("/game/crops/{user_id}")
+def get_user_crops(user_id: str):
+    """사용자가 키우고 있는 모든 작물 목록 불러오기"""
+    game_doc = games_collection.find_one({"userId": user_id}, {"_id": False})
+    if not game_doc:
+        return {"crops": []}
+    
+    # 새로운 구조 (crops 배열) 확인
+    if game_doc.get("crops") and isinstance(game_doc["crops"], list):
+        return {"crops": game_doc["crops"]}
+    
+    # 기존 구조 (단일 state)가 있으면 변환
+    if game_doc.get("state") and game_doc["state"].get("cropName"):
+        old_state = game_doc["state"]
+        crop = {
+            "cropName": old_state.get("cropName", ""),
+            "hp": old_state.get("hp", 100),
+            "day": old_state.get("day", 0),
+            "gameStartTime": old_state.get("gameStartTime"),
+            "lastUpdateTime": old_state.get("lastUpdateTime"),
+            "currentWeather": old_state.get("currentWeather"),
+            "weatherDate": old_state.get("weatherDate")
+        }
+        return {"crops": [crop]}
+    
+    return {"crops": []}
 
 
 # 수확 피드백

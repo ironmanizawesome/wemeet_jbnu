@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>내 작물 • 농업 게임</title>
+  <style>
+    :root {
+      --bg: #0a0e27;
+      --fg: #e5e7eb;
+      --muted: #94a3b8;
+      --card: rgba(15, 23, 42, 0.85);
+      --border: #1f2a44;
+      --primary: #60a5fa;
+      --secondary: #8b5cf6;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--fg);
+      background: 
+        radial-gradient(1200px 800px at 20% 20%, rgba(96, 165, 250, 0.15), transparent 50%),
+        radial-gradient(1000px 600px at 80% 60%, rgba(139, 92, 246, 0.15), transparent 50%),
+        radial-gradient(800px 500px at 50% 100%, rgba(34, 197, 94, 0.1), transparent 50%),
+        var(--bg);
+      overflow-x: hidden;
+    }
+
+    /* 헤더 */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      font-size: 32px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    /* 메인 컨테이너 */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .title-section {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .title-section h2 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .title-section p {
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    /* 작물 카드 그리드 */
+    .crops-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .crop-card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .crop-card:hover:not(.empty):not(.disabled) {
+      border-color: var(--primary);
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(96, 165, 250, 0.2);
+    }
+
+    .crop-card.empty {
+      border-style: dashed;
+      cursor: default;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    .crop-card.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .crop-icon {
+      font-size: 80px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .crop-name {
+      font-size: 24px;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    .crop-info {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .crop-stat {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+    }
+
+    .crop-stat-label {
+      color: var(--muted);
+    }
+
+    .crop-stat-value {
+      font-weight: 600;
+    }
+
+    .hp-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .hp-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e 0%, #f59e0b 70%, #ef4444 100%);
+      transition: width 0.3s ease;
+      border-radius: 4px;
+    }
+
+    .empty-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      color: var(--muted);
+    }
+
+    .empty-icon {
+      font-size: 64px;
+      opacity: 0.5;
+    }
+
+    .add-button {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 100%;
+      max-width: 200px;
+    }
+
+    .add-button:hover {
+      background: #3b82f6;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(96, 165, 250, 0.3);
+    }
+
+    .delete-button {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--danger);
+      font-size: 18px;
+      transition: all 0.2s ease;
+    }
+
+    .delete-button:hover {
+      background: var(--danger);
+      color: white;
+    }
+
+    .weather-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    @media (max-width: 768px) {
+      .crops-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">🌱</div>
+      <h1>농업 다마고치</h1>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="title-section">
+      <h2>내 작물 관리</h2>
+      <p>키우고 있는 작물을 선택하거나 새 작물을 추가하세요 (최대 2개)</p>
+    </div>
+
+    <div class="crops-grid" id="cropsGrid">
+      <!-- 작물 카드들이 여기에 동적으로 추가됩니다 -->
+    </div>
+  </div>
+
+  <script type="module" src="character-select.js"></script>
+</body>
+</html>
+

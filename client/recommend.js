@@ -1,5 +1,6 @@
 // 다마고치 선택 게임 스크립트 (추천 시스템 포함)
 
+const API_BASE = window.API_BASE_URL || "http://127.0.0.1:8000";
 const API_URL = window.RECOMMENDATION_API_URL || "http://127.0.0.1:8000/recommendations";
 
 // 초기 작물 목록: 감자, 오이, 토마토, 당근, 부추
@@ -250,12 +251,51 @@ selectButton.addEventListener("click", async () => {
   selectButton.disabled = true;
   selectButton.textContent = "선택 중...";
   
+  // 새 작물을 백엔드에 저장
+  try {
+    const username = sessionStorage.getItem("username") || sessionStorage.getItem("userName") || "";
+    const cropData = {
+      cropName: selectedCrop.name,
+      hp: 100,
+      day: 0,
+      gameStartTime: new Date().toISOString(),
+      lastUpdateTime: new Date().toISOString(),
+      currentWeather: null,
+      weatherDate: null
+    };
+    
+    const response = await fetch(`${API_BASE}/game/crop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: username,
+        crop: cropData
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      if (errorData.message && errorData.message.includes("최대 2개")) {
+        alert("최대 2개의 작물만 키울 수 있습니다. 먼저 기존 작물을 삭제해주세요.");
+        window.location.href = "character-select.html";
+        return;
+      }
+      throw new Error("작물 저장 실패");
+    }
+  } catch (error) {
+    console.error("작물 저장 오류:", error);
+    alert("작물 저장에 실패했습니다. 다시 시도해주세요.");
+    selectButton.disabled = false;
+    selectButton.textContent = "선택하기";
+    return;
+  }
+  
   setTimeout(() => {
     selectButton.textContent = "✓ 선택 완료!";
     selectButton.style.background = "linear-gradient(135deg, var(--success), #16a34a)";
     
     setTimeout(() => {
-      window.location.href = "game.html";
+      window.location.href = "character-select.html";
     }, 800);
   }, 500);
 });
