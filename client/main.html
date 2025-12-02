@@ -180,16 +180,25 @@
 
     <!-- 타일 버튼 영역 -->
     <section class="tiles" aria-label="빠른 실행">
-      <!-- 추천시스템 -->
-      <a class="tile" href="recommend.html" aria-label="추천시스템 열기">
+      <!-- 다마고치 게임 -->
+      <a class="tile" href="game.html" id="gameTile" aria-label="다마고치 게임 열기">
+        <div class="icon" aria-hidden="true">🌱</div>
+        <div>
+          <h3>다마고치 게임</h3>
+          <p id="gameTileDesc">작물을 키워보세요</p>
+        </div>
+      </a>
+
+      <!-- 작물 선택/변경 -->
+      <a class="tile" href="recommend.html" aria-label="작물 선택 열기">
         <div class="icon" aria-hidden="true">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
             <path d="M4 4h16v6H4V4Zm0 10h10v6H4v-6Zm12 0h4v6h-4v-6Z" stroke="currentColor" stroke-width="2" />
           </svg>
         </div>
         <div>
-          <h3>추천시스템</h3>
-          <p>작물/장비/교육 코스 개인화 추천</p>
+          <h3>작물 선택</h3>
+          <p>키울 작물을 선택하세요</p>
         </div>
       </a>
 
@@ -293,6 +302,16 @@
         e.currentTarget.href = `profile.html?email=${encodeURIComponent(email)}`; 
       }
     });
+
+    // 게임 타일 업데이트
+    const gameTile = document.getElementById('gameTile');
+    const gameTileDesc = document.getElementById('gameTileDesc');
+    const selectedCrop = sessionStorage.getItem('cropName');
+    if(selectedCrop) {
+      gameTileDesc.textContent = `${selectedCrop} 키우기`;
+    } else {
+      gameTileDesc.textContent = '작물을 먼저 선택하세요';
+    }
   </script>
 </body>
 </html>

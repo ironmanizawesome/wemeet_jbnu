@@ -1,85 +1,501 @@
 <!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>작물 추천 • 귀농 청년</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body class="app-body recommend-body">
-    <header class="top-nav">
-      <div class="top-nav__left">
-        <div class="top-nav__logo">GN</div>
-        <div class="top-nav__title">귀농 청년 맞춤 추천</div>
-      </div>
-      <nav class="top-nav__menu">
-        <a href="main.html">대시보드</a>
-        <a href="calendar.html">일정</a>
-        <a href="policy.html">정책</a>
-        <a href="recommend.html" class="active">추천</a>
-      </nav>
-    </header>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>다마고치 선택 • 농업 게임</title>
+  <style>
+    :root {
+      --bg: #0a0e27;
+      --fg: #e5e7eb;
+      --muted: #94a3b8;
+      --card: rgba(15, 23, 42, 0.85);
+      --border: #1f2a44;
+      --primary: #60a5fa;
+      --secondary: #8b5cf6;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
 
-    <main class="recommend-wrapper" aria-labelledby="recommendTitle">
-      <section class="recommend-card" aria-label="추천 조건">
-        <h1 id="recommendTitle">추천 조건 선택</h1>
-        <p class="recommend-card__desc">
-          재배 시기, 난이도, 햇빛 조건을 선택하면 FastAPI 추천 엔진이 바로 결과를 돌려줍니다.
-        </p>
+    * {
+      box-sizing: border-box;
+    }
 
-        <form id="recommend-form" class="recommend-form">
-          <label class="field">
-            <span>재배 시기</span>
-            <select name="season">
-              <option value="">선택 안 함</option>
-              <option value="봄">봄</option>
-              <option value="여름">여름</option>
-              <option value="가을">가을</option>
-              <option value="겨울">겨울</option>
-            </select>
-          </label>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--fg);
+      background: 
+        radial-gradient(1200px 800px at 20% 20%, rgba(96, 165, 250, 0.15), transparent 50%),
+        radial-gradient(1000px 600px at 80% 60%, rgba(139, 92, 246, 0.15), transparent 50%),
+        radial-gradient(800px 500px at 50% 100%, rgba(34, 197, 94, 0.1), transparent 50%),
+        var(--bg);
+      overflow-x: hidden;
+    }
 
-          <label class="field">
-            <span>난이도</span>
-            <select name="level">
-              <option value="">선택 안 함</option>
-              <option value="하">하</option>
-              <option value="중">중</option>
-              <option value="상">상</option>
-              <option value="최상">최상</option>
-            </select>
-          </label>
+    /* 헤더 */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
 
-          <label class="field">
-            <span>햇빛 조건</span>
-            <select name="sunlight">
-              <option value="">선택 안 함</option>
-              <option value="햇빛">햇빛</option>
-              <option value="그늘">그늘</option>
-            </select>
-          </label>
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      user-select: none;
+    }
 
-          <button type="submit" class="recommend-submit">추천받기</button>
-        </form>
+    .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 900;
+      font-size: 18px;
+      box-shadow: 0 8px 24px rgba(96, 165, 250, 0.4);
+      animation: pulse 2s ease-in-out infinite;
+    }
 
-        <p id="recommend-status" class="recommend-status" role="status" aria-live="polite">
-          조건을 선택하고 추천을 받아보세요.
-        </p>
-      </section>
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 8px 24px rgba(96, 165, 250, 0.4); }
+      50% { transform: scale(1.05); box-shadow: 0 12px 32px rgba(96, 165, 250, 0.6); }
+    }
 
-      <section class="recommend-results" aria-live="polite">
-        <div class="condition-card" id="condition-card">
-          <p><strong>현재 조건</strong></p>
-          <p>재배 시기: 모든 시기</p>
-          <p>난이도: 모든 수준</p>
-          <p>햇빛 조건: 상관없음</p>
+    .brand span {
+      font-weight: 700;
+      font-size: 18px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* 메인 컨테이너 */
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 32px;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+    }
+
+    /* 제목 섹션 */
+    .title-section {
+      grid-column: 1 / -1;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .title-section h1 {
+      font-size: 42px;
+      font-weight: 900;
+      margin: 0 0 12px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary), var(--success));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .title-section p {
+      font-size: 18px;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    /* 추천 필터 카드 */
+    .filter-card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      backdrop-filter: blur(10px);
+      height: fit-content;
+      position: sticky;
+      top: 24px;
+    }
+
+    .filter-card h2 {
+      margin: 0 0 20px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .filter-form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .filter-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .filter-field label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .filter-field select {
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 2px solid var(--border);
+      background: rgba(2, 6, 23, 0.8);
+      color: var(--fg);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .filter-field select:hover {
+      border-color: var(--primary);
+    }
+
+    .filter-field select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.2);
+    }
+
+    .filter-submit {
+      margin-top: 8px;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 8px 24px rgba(96, 165, 250, 0.4);
+    }
+
+    .filter-submit:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(96, 165, 250, 0.6);
+    }
+
+    .filter-submit:active {
+      transform: translateY(0);
+    }
+
+    .filter-status {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(96, 165, 250, 0.1);
+      border: 1px solid var(--primary);
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    /* 작물 카드 그리드 */
+    .results-section {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .crop-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 24px;
+    }
+
+    .crop-card {
+      position: relative;
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+    }
+
+    .crop-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      transform: scaleX(0);
+      transition: transform 0.3s ease;
+    }
+
+    .crop-card:hover {
+      transform: translateY(-8px) scale(1.02);
+      border-color: var(--primary);
+      box-shadow: 0 20px 40px rgba(96, 165, 250, 0.3);
+    }
+
+    .crop-card:hover::before {
+      transform: scaleX(1);
+    }
+
+    .crop-card.selected {
+      border-color: var(--success);
+      background: rgba(34, 197, 94, 0.1);
+      box-shadow: 0 0 30px rgba(34, 197, 94, 0.4);
+    }
+
+    .crop-card.selected::before {
+      background: linear-gradient(90deg, var(--success), #16a34a);
+      transform: scaleX(1);
+    }
+
+    .crop-card.disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      position: relative;
+    }
+
+    .crop-card.disabled:hover {
+      transform: none;
+      border-color: var(--border);
+      box-shadow: none;
+    }
+
+    .coming-soon-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: linear-gradient(135deg, rgba(100, 116, 139, 0.9), rgba(71, 85, 105, 0.9));
+      color: white;
+      padding: 6px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      z-index: 10;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .crop-icon {
+      font-size: 64px;
+      text-align: center;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+
+    .crop-name {
+      font-size: 24px;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    .crop-info {
+      font-size: 14px;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
+    .crop-level {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 12px;
+      text-align: center;
+      width: 100%;
+    }
+
+    .crop-level.easy {
+      background: rgba(34, 197, 94, 0.2);
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+
+    .crop-level.medium {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+      border: 1px solid var(--warning);
+    }
+
+    .crop-level.hard {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+      border: 1px solid var(--danger);
+    }
+
+    /* 선택 버튼 */
+    .select-button {
+      width: 100%;
+      padding: 16px;
+      margin-top: 24px;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 8px 24px rgba(96, 165, 250, 0.4);
+    }
+
+    .select-button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(96, 165, 250, 0.6);
+    }
+
+    .select-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* 로딩 및 빈 상태 */
+    .loading, .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+      font-size: 18px;
+      grid-column: 1 / -1;
+    }
+
+    .spinner {
+      border: 3px solid var(--border);
+      border-top: 3px solid var(--primary);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* 반응형 */
+    @media (max-width: 768px) {
+      .title-section h1 {
+        font-size: 32px;
+      }
+
+      .crop-grid {
+        grid-template-columns: 1fr;
+      }
+
+      main {
+        padding: 24px 16px;
+      }
+
+      .filter-card {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">🌱</div>
+      <span>농업 다마고치</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="title-section">
+      <h1>키울 작물을 선택하세요!</h1>
+      <p>조건을 선택하여 추천받은 작물 중에서 다마고치를 선택하세요</p>
+    </div>
+
+    <!-- 추천 필터 -->
+    <aside class="filter-card">
+      <h2>🎯 추천 조건</h2>
+      <form id="filterForm" class="filter-form">
+        <div class="filter-field">
+          <label for="season">재배 시기</label>
+          <select id="season" name="season">
+            <option value="">선택 안 함</option>
+            <option value="봄">봄</option>
+            <option value="여름">여름</option>
+            <option value="가을">가을</option>
+            <option value="겨울">겨울</option>
+          </select>
         </div>
 
-        <ul class="result-list" id="recommend-list"></ul>
-        <p class="no-result" id="recommend-empty">조건에 맞는 작물이 없습니다.</p>
-      </section>
-    </main>
+        <div class="filter-field">
+          <label for="level">난이도</label>
+          <select id="level" name="level">
+            <option value="">선택 안 함</option>
+            <option value="하">하 (초보자용)</option>
+            <option value="중">중</option>
+            <option value="상">상</option>
+            <option value="최상">최상</option>
+          </select>
+        </div>
 
-    <script type="module" src="recommend.js"></script>
-  </body>
+        <div class="filter-field">
+          <label for="sunlight">햇빛 조건</label>
+          <select id="sunlight" name="sunlight">
+            <option value="">선택 안 함</option>
+            <option value="햇빛">햇빛 필요</option>
+            <option value="그늘">그늘에서도 가능</option>
+          </select>
+        </div>
+
+        <button type="submit" class="filter-submit">추천받기</button>
+      </form>
+      <div id="filterStatus" class="filter-status" style="display: none;"></div>
+    </aside>
+
+    <!-- 추천 결과 -->
+    <section class="results-section">
+      <div id="cropContainer" class="loading">
+        <div class="spinner"></div>
+        <p>작물 정보를 불러오는 중...</p>
+      </div>
+
+      <button id="selectButton" class="select-button" disabled>
+        선택하기
+      </button>
+    </section>
+  </main>
+
+  <script type="module" src="recommend.js"></script>
+</body>
 </html>
