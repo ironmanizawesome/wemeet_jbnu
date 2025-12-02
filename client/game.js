@@ -134,6 +134,8 @@ const pesticideButton = document.getElementById("pesticideButton");
 const harvestButton = document.getElementById("harvestButton");
 const feedbackMessage = document.getElementById("feedbackMessage");
 const nextDayButton = document.getElementById("nextDayButton");
+const cropSpeechBubble = document.getElementById("cropSpeechBubble");
+const speechBubbleContent = document.getElementById("speechBubbleContent");
 
 // 기상 정보 관련 요소
 const weatherIcon = document.getElementById("weatherIcon");
@@ -422,6 +424,149 @@ function calculateCurrentDay() {
   return Math.max(0, currentDay);
 }
 
+// 작물 말풍선 표시
+function showCropSpeechBubble(message, duration = 5000) {
+  if (!cropSpeechBubble || !speechBubbleContent) return;
+  
+  speechBubbleContent.textContent = message;
+  cropSpeechBubble.classList.add("show");
+  
+  // 일정 시간 후 자동으로 숨김
+  setTimeout(() => {
+    cropSpeechBubble.classList.remove("show");
+  }, duration);
+}
+
+// 전날 행동들을 평가하는 함수
+async function evaluatePreviousDayActions(previousDay) {
+  try {
+    const previousHp = gameState.hp;
+    
+    // 전날의 행동들 필터링
+    const previousDayActions = gameState.actions.filter(a => a.day === previousDay);
+    
+    if (previousDayActions.length === 0) {
+      // 전날 행동이 없으면 방치 페널티만 적용
+      gameState.hp = Math.max(0, gameState.hp - 3);
+      if (gameState.hp > 0) {
+        showFeedback("방치로 인해 작물 건강도가 약간 감소했습니다... (-3)", "bad");
+        showCropSpeechBubble("물과 비료를 제대로 주지 않아서 힘들어요...", 5000);
+      }
+      return;
+    }
+    
+    // 전날의 날씨 정보 찾기 (첫 번째 행동의 날씨 사용)
+    const weatherOnThatDay = previousDayActions[0]?.weather || null;
+    
+    // 전날 행동들을 일괄 평가
+    const response = await fetch(`${API_BASE}/game/evaluate-previous-day`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: gameState.userId,
+        cropName: gameState.cropName,
+        day: previousDay,
+        currentHp: gameState.hp,
+        actions: gameState.actions,
+        previousActions: gameState.actions.filter(a => a.day < previousDay).slice(-5),
+        weatherOnThatDay: weatherOnThatDay
+      })
+    });
+
+    if (!response.ok) {
+      console.error("전날 행동 평가 실패");
+      return;
+    }
+
+    const result = await response.json();
+    
+    // HP 업데이트
+    gameState.hp = Math.max(0, Math.min(100, result.newHp));
+    const hpChange = gameState.hp - previousHp;
+    
+    // HP가 감소했을 때 말풍선으로 피드백 표시
+    if (hpChange < 0 && result.feedbacks && result.feedbacks.length > 0) {
+      // 피드백에서 핵심 메시지 추출
+      const mainFeedback = result.feedbacks[0];
+      
+      // 관리 소홀 부분 파악
+      let managementIssue = "";
+      if (mainFeedback.includes("과습") || mainFeedback.includes("물")) {
+        managementIssue = "물을 너무 많이 주셨어요. 습한 날씨에는 물을 주지 않는 게 좋아요.";
+      } else if (mainFeedback.includes("비료")) {
+        managementIssue = "비료를 너무 많이 주셨어요. 적당한 양을 주는 게 중요해요.";
+      } else if (mainFeedback.includes("방치")) {
+        managementIssue = "관리를 제대로 해주지 않아서 힘들어요. 물과 비료를 꾸준히 주세요.";
+      } else {
+        // 피드백에서 핵심만 추출
+        managementIssue = mainFeedback.replace(/\([^)]*\)/g, "").trim();
+      }
+      
+      showCropSpeechBubble(managementIssue, 6000);
+    }
+    
+    // 피드백 표시 (여러 피드백이 있으면 모두 표시)
+    if (result.feedbacks && result.feedbacks.length > 0) {
+      // 첫 번째 피드백을 즉시 표시
+      const firstFeedback = result.feedbacks[0];
+      const feedbackType = result.totalHpChange > 0 ? "good" : result.totalHpChange < 0 ? "bad" : "neutral";
+      showFeedback(firstFeedback, feedbackType);
+      
+      // 나머지 피드백이 있으면 약간의 지연 후 표시
+      if (result.feedbacks.length > 1) {
+        setTimeout(() => {
+          const combinedFeedback = result.feedbacks.slice(1).join(" ");
+          showFeedback(combinedFeedback, feedbackType);
+        }, 3000);
+      }
+    }
+    
+  } catch (error) {
+    console.error("전날 행동 평가 실패:", error);
+  }
+}
+
+// 병해충 발생 체크
+async function checkPestOccurrence(day) {
+  try {
+    const response = await fetch(`${API_BASE}/game/check-pest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: gameState.userId,
+        cropName: gameState.cropName,
+        day: day,
+        currentHp: gameState.hp,
+        actions: gameState.actions,
+        currentWeather: gameState.currentWeather
+      })
+    });
+
+    if (!response.ok) {
+      return; // 오류 시 무시
+    }
+
+    const result = await response.json();
+    
+    if (result.pestOccurred) {
+      // 병해충 발생 시 HP 감소
+      gameState.hp = Math.max(0, gameState.hp + result.hpChange);
+      if (result.feedback) {
+        showFeedback(result.feedback, "bad");
+        // 병해충 발생 시 말풍선으로 피드백
+        const pestMessage = `${result.pestName}이(가) 발생했어요! 농약을 살포해주세요.`;
+        showCropSpeechBubble(pestMessage, 6000);
+      }
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error("병해충 체크 실패:", error);
+    return false;
+  }
+}
+
 // 시간 기반 날짜 업데이트 (날짜가 증가하면 자동 처리)
 async function updateDayBasedOnTime() {
   // 테스트 모드일 때는 이 함수를 사용하지 않음
@@ -438,17 +583,14 @@ async function updateDayBasedOnTime() {
     
     // 각 증가한 날짜에 대해 자동 평가
     for (let d = previousDay + 1; d <= calculatedDay; d++) {
-      // 해당 날짜에 행동이 없으면 자동으로 HP 소폭 감소 (방치 페널티)
-      const actionsOnThisDay = gameState.actions.filter(
-        a => Math.floor((new Date(a.timestamp) - new Date(gameState.gameStartTime)) / GAME_DAY_LENGTH_MS) === d - 1
-      );
+      // 전날(d-1)의 행동들을 평가 (다음 날에 효과가 나타남)
+      if (d > 0) {
+        await evaluatePreviousDayActions(d - 1);
+      }
       
-      if (actionsOnThisDay.length === 0 && d > 0) {
-        // 방치 페널티: 하루 동안 아무 행동도 하지 않으면 HP 감소
-        gameState.hp = Math.max(0, gameState.hp - 3);
-        if (gameState.hp > 0) {
-          showFeedback(`방치로 인해 작물 건강도가 약간 감소했습니다... (-3)`, "bad");
-        }
+      // 병해충 발생 체크 (날짜가 진행될 때마다)
+      if (d > 0) {
+        await checkPestOccurrence(d);
       }
     }
     
@@ -481,17 +623,9 @@ async function proceedToNextDay() {
     const currentDay = gameState.day || 0;
     const nextDay = currentDay + 1;
     
-    // 현재 날짜에 행동이 없으면 방치 페널티
-    const actionsOnCurrentDay = gameState.actions.filter(
-      a => a.day === currentDay
-    );
-    
-    if (actionsOnCurrentDay.length === 0 && currentDay > 0) {
-      // 방치 페널티: 하루 동안 아무 행동도 하지 않으면 HP 감소
-      gameState.hp = Math.max(0, gameState.hp - 3);
-      if (gameState.hp > 0) {
-        showFeedback(`방치로 인해 작물 건강도가 약간 감소했습니다... (-3)`, "bad");
-      }
+    // 전날(현재 날짜)의 행동들을 평가 (다음 날에 효과가 나타남)
+    if (currentDay >= 0) {
+      await evaluatePreviousDayActions(currentDay);
     }
     
     gameState.day = nextDay;
@@ -499,6 +633,11 @@ async function proceedToNextDay() {
     
     // 날짜가 변경되었으므로 기상 업데이트
     updateWeatherBasedOnDate();
+    
+    // 병해충 발생 체크 (다음 날로 진행할 때)
+    if (nextDay > 0) {
+      await checkPestOccurrence(nextDay);
+    }
     
     await saveGameState();
     updateUI();
@@ -602,7 +741,7 @@ function updateUI() {
   }
 }
 
-// 행동 실행 (물주기, 비료주기, 해충퇴치)
+// 행동 실행 (물주기, 비료주기, 농약살포)
 async function performAction(actionType) {
   if (gameState.hp <= 0) {
     showGameOverModal();
@@ -623,48 +762,31 @@ async function performAction(actionType) {
     const currentDay = calculateCurrentDay();
     const actionTimestamp = new Date().toISOString();
     
-    // 행동 기록 (날짜 증가 없이 행동만 기록)
+    // 기상 정보 업데이트 (행동 시점의 날씨 기록)
+    updateWeatherBasedOnDate();
+    
+    // 행동 기록 (날짜 증가 없이 행동만 기록, 날씨 정보도 함께 저장)
     gameState.actions.push({
       type: actionType,
       day: currentDay,
-      timestamp: actionTimestamp
+      timestamp: actionTimestamp,
+      weather: gameState.currentWeather // 행동 시점의 날씨 저장
     });
 
-    // AI 판단 및 HP 계산
-    const response = await fetch(`${API_BASE}/game/evaluate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: gameState.userId,
-        cropName: gameState.cropName,
-        actionType: actionType,
-        day: currentDay,
-        currentHp: gameState.hp,
-        actions: gameState.actions,
-        previousActions: gameState.actions.slice(-5) // 최근 5개 행동
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error("판단 실패");
-    }
-
-    const result = await response.json();
-    
-    // HP 업데이트
-    gameState.hp = Math.max(0, Math.min(100, result.newHp));
-    gameState.lastFeedback = result.feedback;
-    gameState.lastUpdateTime = actionTimestamp;
-
-    // 피드백 표시
-    if (result.feedback) {
-      showFeedback(result.feedback, result.hpChange > 0 ? "good" : result.hpChange < 0 ? "bad" : "neutral");
-    }
+    // 즉시 평가하지 않고 행동만 기록
+    // 간단한 확인 메시지만 표시
+    const actionNames = {
+      "water": "물",
+      "fertilizer": "비료",
+      "pesticide": "농약"
+    };
+    const actionName = actionNames[actionType] || "관리";
+    showFeedback(`${actionName}을(를) 주었습니다. 내일 효과가 나타날 거예요!`, "neutral");
 
     // 게임 상태 저장
     await saveGameState();
     
-    // UI 업데이트
+    // UI 업데이트 (HP는 변경하지 않음)
     updateUI();
 
   } catch (error) {
@@ -858,10 +980,62 @@ fertilizerButton.addEventListener("click", () => performAction("fertilizer"));
 pesticideButton.addEventListener("click", () => performAction("pesticide"));
 harvestButton.addEventListener("click", harvest);
 
+// 작물 관리 가이드 가져오기
+async function getCropGuide() {
+  try {
+    const response = await fetch(`${API_BASE}/game/crop-guide/${encodeURIComponent(gameState.cropName)}`);
+    if (response.ok) {
+      const data = await response.json();
+      return data.guide || "";
+    }
+  } catch (error) {
+    console.error("작물 가이드 가져오기 실패:", error);
+  }
+  return null;
+}
+
 // 도움말 버튼
-document.getElementById("helpButton").addEventListener("click", (e) => {
+document.getElementById("helpButton").addEventListener("click", async (e) => {
   e.preventDefault();
-  alert("물 주기, 비료 주기, 해충 퇴치를 통해 작물을 키우세요!\n\n작물 건강도가 70 이상이면 수확할 수 있습니다.");
+  
+  const guide = await getCropGuide();
+  
+  let helpMessage = `🌱 ${gameState.cropName} 작물 관리 가이드\n\n`;
+  helpMessage += `═══════════════════════════════\n`;
+  helpMessage += `📌 기본 관리 방법\n`;
+  helpMessage += `═══════════════════════════════\n\n`;
+  helpMessage += `💧 물 주기:\n`;
+  helpMessage += `  • 적절한 시기에 물을 주세요\n`;
+  helpMessage += `  • 습한 날씨(비, 눈, 천둥)에는 물을 주지 마세요\n`;
+  helpMessage += `  • 과습은 뿌리를 썩게 할 수 있어요\n\n`;
+  helpMessage += `🌿 비료 주기:\n`;
+  helpMessage += `  • 작물에 맞는 비료를 적당한 양만 주세요\n`;
+  helpMessage += `  • 너무 많이 주면 오히려 해로울 수 있어요\n\n`;
+  helpMessage += `💊 농약 살포:\n`;
+  helpMessage += `  • 병해충이 발생했을 때 사용하세요\n`;
+  helpMessage += `  • 예방 차원에서 주기적으로 사용할 수도 있어요\n\n`;
+  helpMessage += `═══════════════════════════════\n`;
+  helpMessage += `💡 게임 팁\n`;
+  helpMessage += `═══════════════════════════════\n\n`;
+  helpMessage += `• 행동을 하면 다음 날에 효과가 나타나요\n`;
+  helpMessage += `• 작물 건강도가 70 이상이면 수확할 수 있어요\n`;
+  helpMessage += `• 날씨에 따라 관리 방법을 조절하세요\n`;
+  helpMessage += `• 작물이 말풍선으로 피드백을 줄 거예요\n\n`;
+  
+  if (guide) {
+    helpMessage += `═══════════════════════════════\n`;
+    helpMessage += `📖 ${gameState.cropName} 상세 정보\n`;
+    helpMessage += `═══════════════════════════════\n\n`;
+    // 가이드 텍스트를 간단하게 정리
+    const guideLines = guide.split('\n').filter(line => line.trim());
+    const importantLines = guideLines.slice(0, 15); // 처음 15줄만 표시
+    helpMessage += importantLines.join('\n');
+    if (guideLines.length > 15) {
+      helpMessage += '\n\n... (더 자세한 정보는 게임을 진행하며 확인하세요)';
+    }
+  }
+  
+  alert(helpMessage);
 });
 
 // Admin 모드 활성화/비활성화

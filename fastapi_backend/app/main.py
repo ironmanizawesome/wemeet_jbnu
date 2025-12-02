@@ -177,6 +177,7 @@ class GameActionRequest(BaseModel):
     currentHp: int
     actions: List[dict]
     previousActions: Optional[List[dict]] = None
+    currentWeather: Optional[str] = None  # 현재 날씨 정보
 
 
 class GameEvaluateResponse(BaseModel):
@@ -477,6 +478,7 @@ class GameActionRequest(BaseModel):
     currentHp: int
     actions: List[dict]
     previousActions: Optional[List[dict]] = None
+    currentWeather: Optional[str] = None  # 현재 날씨 정보
 
 
 class GameEvaluateResponse(BaseModel):
@@ -485,10 +487,141 @@ class GameEvaluateResponse(BaseModel):
     feedback: str
 
 
+# 병해충 발생 체크를 위한 요청 모델
+class PestCheckRequest(BaseModel):
+    userId: str
+    cropName: str
+    day: int
+    currentHp: int
+    actions: List[dict]
+    currentWeather: Optional[str] = None
+
+
+# 병해충 발생 체크 응답 모델
+class PestCheckResponse(BaseModel):
+    pestOccurred: bool
+    pestName: Optional[str] = None
+    hpChange: int = 0
+    feedback: str = ""
+
+
+@app.post("/game/check-pest", response_model=PestCheckResponse)
+def check_pest_occurrence(req: PestCheckRequest):
+    """날짜 진행 시 병해충 발생 여부를 확률 기반으로 체크"""
+    import random
+    
+    try:
+        # 기본 병해충 발생 확률 (5%)
+        base_probability = 0.05
+        
+        # 관리 상태 평가 (최근 3일간의 행동)
+        recent_actions = [a for a in req.actions if a.get("day", 0) >= req.day - 3]
+        water_count = sum(1 for a in recent_actions if a.get("type") == "water")
+        fertilizer_count = sum(1 for a in recent_actions if a.get("type") == "fertilizer")
+        pesticide_count = sum(1 for a in recent_actions if a.get("type") == "pesticide")
+        
+        # 관리 상태에 따른 확률 조정
+        management_score = 0
+        if water_count > 0:
+            management_score += 1
+        if fertilizer_count > 0:
+            management_score += 1
+        if pesticide_count > 0:
+            management_score += 1
+        
+        # 관리가 잘 되었으면 확률 감소, 못했으면 증가
+        if management_score >= 2:
+            # 잘 관리됨: 확률 50% 감소
+            base_probability *= 0.5
+        elif management_score == 0:
+            # 관리 안됨: 확률 200% 증가
+            base_probability *= 3.0
+        elif management_score == 1:
+            # 부분 관리: 확률 50% 증가
+            base_probability *= 1.5
+        
+        # 기상 조건에 따른 확률 조정
+        weather_multiplier = 1.0
+        pest_type = None
+        
+        if req.currentWeather:
+            if req.currentWeather in ["비", "천둥"]:
+                # 습도 관련 병해충 확률 증가 (흰가루병, 역병 등)
+                weather_multiplier = 2.0
+                pest_type = random.choice(["흰가루병", "역병", "노균병"])
+            elif req.currentWeather == "맑음" and random.random() < 0.3:
+                # 건조 관련 병해충 (진딧물, 응애 등)
+                weather_multiplier = 1.5
+                pest_type = random.choice(["진딧물", "응애", "총채벌레"])
+            elif req.currentWeather == "흐림":
+                # 습도가 높은 경우
+                weather_multiplier = 1.3
+                pest_type = random.choice(["흰가루병", "잎마름병"])
+        
+        # 최종 확률 계산
+        final_probability = min(0.5, base_probability * weather_multiplier)  # 최대 50%
+        
+        # 병해충 발생 여부 결정
+        pest_occurred = random.random() < final_probability
+        
+        if pest_occurred:
+            # 병해충 종류 결정
+            if not pest_type:
+                pest_type = random.choice([
+                    "진딧물", "응애", "배추흰나비 애벌레", "좀나방 애벌레",
+                    "흰가루병", "역병", "노균병", "탄저병", "잎마름병"
+                ])
+            
+            # HP 감소량 결정 (관리 상태에 따라)
+            if management_score >= 2:
+                hp_loss = random.randint(3, 5)  # 잘 관리됨: 적은 피해
+            elif management_score == 1:
+                hp_loss = random.randint(5, 8)  # 부분 관리: 중간 피해
+            else:
+                hp_loss = random.randint(8, 15)  # 관리 안됨: 큰 피해
+            
+            feedback = f"⚠️ {pest_type}이(가) 발생했습니다! ({hp_loss} HP 감소)"
+            
+            return PestCheckResponse(
+                pestOccurred=True,
+                pestName=pest_type,
+                hpChange=-hp_loss,
+                feedback=feedback
+            )
+        else:
+            return PestCheckResponse(
+                pestOccurred=False,
+                hpChange=0,
+                feedback=""
+            )
+            
+    except Exception as e:
+        print(f"병해충 체크 오류: {e}")
+        return PestCheckResponse(
+            pestOccurred=False,
+            hpChange=0,
+            feedback=""
+        )
+
+
 @app.post("/game/evaluate", response_model=GameEvaluateResponse)
 def evaluate_game_action(req: GameActionRequest):
     """작물 관리 행동을 평가하고 HP를 계산"""
     try:
+        # 날씨 조건 체크: 습한 날씨(비, 눈)에 물을 주면 과습으로 판단
+        weather_penalty = 0
+        weather_feedback = ""
+        
+        if req.actionType == "water" and req.currentWeather:
+            # 습한 날씨에 물을 주는 경우
+            if req.currentWeather in ["비", "눈", "천둥"]:
+                weather_penalty = -8  # 과습으로 인한 HP 감소
+                weather_feedback = f"⚠️ {req.currentWeather} 날씨에 물을 주면 과습이 될 수 있어요! 뿌리가 썩을 수 있습니다. (-8)"
+            elif req.currentWeather == "흐림":
+                # 흐린 날씨에도 약간의 페널티
+                weather_penalty = -3
+                weather_feedback = f"흐린 날씨에 물을 주는 것은 조금 위험할 수 있어요. (-3)"
+        
         # 작물 가이드라인 가져오기
         crop_guide = get_crop_guide_for_game(req.cropName)
         
@@ -498,21 +631,28 @@ def evaluate_game_action(req: GameActionRequest):
             water_count = sum(1 for a in req.previousActions if a.get("type") == "water")
             fert_count = sum(1 for a in req.previousActions if a.get("type") == "fertilizer")
             pest_count = sum(1 for a in req.previousActions if a.get("type") == "pesticide")
-            recent_summary = f"최근 {len(req.previousActions)}일간 - 물주기: {water_count}회, 비료: {fert_count}회, 해충퇴치: {pest_count}회"
+            recent_summary = f"최근 {len(req.previousActions)}일간 - 물주기: {water_count}회, 비료: {fert_count}회, 농약살포: {pest_count}회"
         else:
             recent_summary = "첫 관리입니다."
+        
+        # 날씨 정보를 가이드라인에 추가
+        weather_info = ""
+        if req.currentWeather:
+            weather_info = f"\n현재 날씨: {req.currentWeather}"
+            if req.actionType == "water" and req.currentWeather in ["비", "눈", "천둥"]:
+                weather_info += "\n⚠️ 주의: 습한 날씨에 물을 주면 과습이 될 수 있습니다."
         
         # 행동 유형 한국어 변환
         action_kr = {
             "water": "물주기",
             "fertilizer": "비료주기",
-            "pesticide": "해충퇴치"
+            "pesticide": "농약살포"
         }.get(req.actionType, req.actionType)
         
         # AI 판단
         chain = game_prompt | llm
         result = chain.invoke({
-            "crop_guide": crop_guide,
+            "crop_guide": crop_guide + weather_info,
             "action_type": action_kr,
             "day": req.day,
             "current_hp": req.currentHp,
@@ -539,6 +679,13 @@ def evaluate_game_action(req: GameActionRequest):
             hp_change = 0
             feedback = "관리 중입니다."
         
+        # 날씨 페널티 적용
+        if weather_penalty != 0:
+            hp_change += weather_penalty
+            # 날씨 피드백이 있으면 우선 표시
+            if weather_feedback:
+                feedback = weather_feedback
+        
         # HP 계산
         new_hp = max(0, min(100, req.currentHp + hp_change))
         
@@ -555,6 +702,90 @@ def evaluate_game_action(req: GameActionRequest):
             newHp=req.currentHp,
             hpChange=0,
             feedback="관리 중입니다."
+        )
+
+
+# 전날 행동들을 일괄 평가하는 요청 모델
+class EvaluatePreviousDayRequest(BaseModel):
+    userId: str
+    cropName: str
+    day: int  # 평가할 날짜 (전날)
+    currentHp: int
+    actions: List[dict]  # 전날의 행동들
+    previousActions: Optional[List[dict]] = None  # 그 이전 행동들
+    weatherOnThatDay: Optional[str] = None  # 그 날의 날씨
+
+
+# 전날 행동 평가 응답 모델
+class EvaluatePreviousDayResponse(BaseModel):
+    newHp: int
+    totalHpChange: int
+    feedbacks: List[str]  # 각 행동에 대한 피드백들
+
+
+@app.post("/game/evaluate-previous-day", response_model=EvaluatePreviousDayResponse)
+def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
+    """전날의 행동들을 일괄 평가하고 HP 변화를 계산"""
+    try:
+        # 전날의 행동들 필터링
+        previous_day_actions = [a for a in req.actions if a.get("day") == req.day]
+        
+        if not previous_day_actions:
+            # 전날 행동이 없으면 방치 페널티만 적용
+            return EvaluatePreviousDayResponse(
+                newHp=max(0, req.currentHp - 3),
+                totalHpChange=-3,
+                feedbacks=["방치로 인해 작물 건강도가 약간 감소했습니다... (-3)"]
+            )
+        
+        total_hp_change = 0
+        all_feedbacks = []
+        current_hp = req.currentHp
+        
+        # 각 행동을 개별적으로 평가
+        for action in previous_day_actions:
+            action_type = action.get("type")
+            # 각 행동의 날씨 정보 사용 (없으면 요청의 날씨 사용)
+            action_weather = action.get("weather") or req.weatherOnThatDay
+            
+            # 각 행동에 대해 평가 요청
+            eval_req = GameActionRequest(
+                userId=req.userId,
+                cropName=req.cropName,
+                actionType=action_type,
+                day=req.day,
+                currentHp=current_hp,
+                actions=req.actions,
+                previousActions=req.previousActions,
+                currentWeather=action_weather
+            )
+            
+            # 평가 수행
+            eval_result = evaluate_game_action(eval_req)
+            
+            # HP 변화 누적
+            total_hp_change += eval_result.hpChange
+            current_hp = eval_result.newHp
+            
+            # 피드백 수집
+            if eval_result.feedback:
+                all_feedbacks.append(eval_result.feedback)
+        
+        # 최종 HP 계산
+        final_hp = max(0, min(100, req.currentHp + total_hp_change))
+        
+        return EvaluatePreviousDayResponse(
+            newHp=final_hp,
+            totalHpChange=total_hp_change,
+            feedbacks=all_feedbacks
+        )
+        
+    except Exception as e:
+        print(f"전날 행동 평가 오류: {e}")
+        return EvaluatePreviousDayResponse(
+            newHp=req.currentHp,
+            totalHpChange=0,
+            feedbacks=["관리 중입니다."]
         )
 
 
@@ -653,6 +884,17 @@ def get_game_state(user_id: str):
     if game_doc and game_doc.get("state"):
         return {"state": game_doc["state"]}
     return {"state": None}
+
+
+@app.get("/game/crop-guide/{crop_name}")
+def get_crop_guide(crop_name: str):
+    """작물 관리 가이드 가져오기"""
+    try:
+        guide_text = get_crop_guide_for_game(crop_name)
+        return {"guide": guide_text}
+    except Exception as e:
+        print(f"작물 가이드 가져오기 오류: {e}")
+        return {"guide": f"{crop_name} 작물의 가이드라인을 찾을 수 없습니다."}
 
 
 @app.get("/game/crops/{user_id}")
