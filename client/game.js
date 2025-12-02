@@ -2,7 +2,7 @@
 
 const API_BASE = window.API_BASE_URL || "http://127.0.0.1:8000";
 
-// 작물 아이콘 매핑
+// 작물 아이콘 매핑 (폴백용)
 const CROP_ICONS = {
   "감자": "🥔",
   "오이": "🥒",
@@ -10,6 +10,109 @@ const CROP_ICONS = {
   "당근": "🥕",
   "부추": "🌿"
 };
+
+// 작물 영어 이름 매핑 (이미지 폴더명)
+const CROP_FOLDER_NAMES = {
+  "감자": "potato",
+  "오이": "cucumber",
+  "토마토": "tomato",
+  "당근": "carrot",
+  "부추": "chive"
+};
+
+// 날짜에 따른 레벨 계산 (7일마다 레벨 증가)
+function calculateLevel(day) {
+  if (day < 7) return 1;
+  if (day < 14) return 2;
+  if (day < 21) return 3;
+  return 4;
+}
+
+// 작물 이미지 경로 생성
+function getCropImagePath(state = null) {
+  const cropFolder = CROP_FOLDER_NAMES[gameState.cropName];
+  if (!cropFolder) {
+    // 이미지가 없는 작물은 이모지 사용
+    return null;
+  }
+  
+  const level = calculateLevel(gameState.day || 0);
+  
+  // 상태 우선순위: 명시적 상태(행동 중) > 병해충 > HP 기반 sad > 일반 상태
+  let imageState;
+  
+  // 명시적으로 전달된 상태가 있으면 우선 사용 (watering, fertilizer, pesticide)
+  if (state && (state === "watering" || state === "fertilizer" || state === "pesticide")) {
+    imageState = state;
+  }
+  // 병해충이 있으면 sickness 우선
+  else if (gameState.hasPest) {
+    imageState = "sickness";
+  }
+  // HP가 70 미만이면 sad 표시
+  else if (gameState.hp < 70) {
+    imageState = "sad";
+  }
+  // 그 외에는 normal 또는 전달된 상태
+  else {
+    imageState = state || gameState.currentImageState || "normal";
+  }
+  
+  // 작물 이름을 영어로 변환 (첫 글자 대문자)
+  const cropNameEng = cropFolder.charAt(0).toUpperCase() + cropFolder.slice(1);
+  
+  return `images/${cropFolder}/${cropNameEng}Lv${level}_${imageState}.png`;
+}
+
+// 작물 이미지 업데이트
+function updateCropImage(state = null) {
+  const displayElement = document.getElementById("cropDisplay");
+  if (!displayElement) {
+    console.warn("cropDisplay 요소를 찾을 수 없습니다.");
+    return;
+  }
+  
+  const imagePath = getCropImagePath(state);
+  
+  if (imagePath) {
+    // img 태그로 변경
+    if (displayElement.tagName !== "IMG") {
+      const img = document.createElement("img");
+      img.id = "cropDisplay";
+      img.className = displayElement.className || "crop-display";
+      // 인라인 스타일 제거 - CSS에서 크기 제어
+      img.style.objectFit = "contain";
+      displayElement.parentNode.replaceChild(img, displayElement);
+      img.src = imagePath;
+      img.alt = `${gameState.cropName} ${state || gameState.currentImageState || "normal"}`;
+      // 이미지 로드 실패 시 콘솔에 경로 출력 (디버깅용)
+      img.onerror = () => {
+        console.error(`이미지 로드 실패: ${imagePath}`);
+      };
+    } else {
+      // 기존 인라인 스타일 제거
+      displayElement.style.width = "";
+      displayElement.style.height = "";
+      displayElement.src = imagePath;
+      displayElement.alt = `${gameState.cropName} ${state || gameState.currentImageState || "normal"}`;
+      // 이미지 로드 실패 시 콘솔에 경로 출력 (디버깅용)
+      displayElement.onerror = () => {
+        console.error(`이미지 로드 실패: ${imagePath}`);
+      };
+    }
+  } else {
+    // 이미지가 없으면 이모지 사용
+    if (displayElement.tagName === "IMG") {
+      const div = document.createElement("div");
+      div.id = "cropDisplay";
+      div.className = "crop-display";
+      displayElement.parentNode.replaceChild(div, displayElement);
+      div.textContent = CROP_ICONS[gameState.cropName] || "🌱";
+    } else {
+      displayElement.textContent = CROP_ICONS[gameState.cropName] || "🌱";
+    }
+  }
+}
 
 // 기상 아이콘 매핑
 const WEATHER_ICONS = {
@@ -117,7 +220,9 @@ let gameState = {
   gameStartTime: null, // 게임 시작 시간 (ISO string)
   lastUpdateTime: null, // 마지막 업데이트 시간 (ISO string)
   currentWeather: null, // 현재 기상 상황
-  weatherDate: null // 기상이 결정된 날짜
+  weatherDate: null, // 기상이 결정된 날짜
+  currentImageState: "normal", // 현재 이미지 상태 (normal, watering, fertilizer, pesticide, sad, sickness)
+  hasPest: false // 병해충 발생 여부
 };
 
 let timeCheckInterval = null; // 시간 체크 인터벌
@@ -354,6 +459,8 @@ async function loadGameState() {
     gameState.actions = [];
     gameState.currentWeather = null;
     gameState.weatherDate = null;
+    gameState.currentImageState = "normal";
+    gameState.hasPest = false;
     await saveGameState();
     
   } catch (error) {
@@ -365,6 +472,8 @@ async function loadGameState() {
     gameState.actions = [];
     gameState.currentWeather = null;
     gameState.weatherDate = null;
+    gameState.currentImageState = "normal";
+    gameState.hasPest = false;
   }
 }
 
@@ -484,6 +593,36 @@ async function evaluatePreviousDayActions(previousDay) {
     gameState.hp = Math.max(0, Math.min(100, result.newHp));
     const hpChange = gameState.hp - previousHp;
     
+    // HP가 감소했을 때 일시적으로 sad 표시
+    if (hpChange < 0 && !gameState.hasPest) {
+      gameState.currentImageState = "sad";
+      updateCropImage("sad");
+      
+      // 3초 후 HP에 따라 상태 결정
+      setTimeout(() => {
+        if (!gameState.hasPest) {
+          if (gameState.hp < 70) {
+            // HP가 70 미만이면 계속 sad 유지
+            gameState.currentImageState = "sad";
+          } else {
+            // HP가 70 이상이면 normal로 복귀
+            gameState.currentImageState = "normal";
+          }
+          updateCropImage();
+        }
+      }, 3000);
+    } else {
+      // HP가 증가하거나 변화가 없을 때는 HP에 따라 상태 결정
+      if (!gameState.hasPest) {
+        if (gameState.hp < 70) {
+          gameState.currentImageState = "sad";
+        } else {
+          gameState.currentImageState = "normal";
+        }
+        updateCropImage();
+      }
+    }
+    
     // HP가 감소했을 때 말풍선으로 피드백 표시
     if (hpChange < 0 && result.feedbacks && result.feedbacks.length > 0) {
       // 피드백에서 핵심 메시지 추출
@@ -551,6 +690,10 @@ async function checkPestOccurrence(day) {
     if (result.pestOccurred) {
       // 병해충 발생 시 HP 감소
       gameState.hp = Math.max(0, gameState.hp + result.hpChange);
+      gameState.hasPest = true; // 병해충 상태 설정
+      gameState.currentImageState = "sickness";
+      updateCropImage("sickness");
+      
       if (result.feedback) {
         showFeedback(result.feedback, "bad");
         // 병해충 발생 시 말풍선으로 피드백
@@ -558,6 +701,23 @@ async function checkPestOccurrence(day) {
         showCropSpeechBubble(pestMessage, 6000);
       }
       return true;
+    }
+    
+    // 병해충이 해결되었는지 확인 (농약 살포 후)
+    if (gameState.hasPest) {
+      const recentPesticide = gameState.actions.filter(
+        a => a.type === "pesticide" && a.day >= (gameState.day || 0) - 1
+      );
+      if (recentPesticide.length > 0) {
+      // 농약을 살포했으면 병해충 상태 해제
+      gameState.hasPest = false;
+      if (gameState.hp < 70) {
+        gameState.currentImageState = "sad";
+      } else {
+        gameState.currentImageState = "normal";
+      }
+      updateCropImage();
+      }
     }
     
     return false;
@@ -665,7 +825,9 @@ async function saveGameState() {
       gameStartTime: gameState.gameStartTime,
       lastUpdateTime: gameState.lastUpdateTime || new Date().toISOString(),
       currentWeather: gameState.currentWeather,
-      weatherDate: gameState.weatherDate
+      weatherDate: gameState.weatherDate,
+      currentImageState: gameState.currentImageState || "normal",
+      hasPest: gameState.hasPest || false
     };
     
     const response = await fetch(`${API_BASE}/game/crop`, {
@@ -697,9 +859,11 @@ async function saveGameState() {
 
 // UI 업데이트
 function updateUI() {
-  // 작물 이름과 아이콘
+  // 작물 이름
   cropNameEl.textContent = gameState.cropName;
-  cropDisplay.textContent = CROP_ICONS[gameState.cropName] || "🌱";
+  
+  // 작물 이미지 업데이트 (상태에 따라)
+  updateCropImage();
   
   // HP 바
   const currentHp = Math.max(0, Math.min(100, gameState.hp));
@@ -773,6 +937,31 @@ async function performAction(actionType) {
       weather: gameState.currentWeather // 행동 시점의 날씨 저장
     });
 
+    // 행동에 맞는 이미지로 변경
+    const imageStateMap = {
+      "water": "watering",
+      "fertilizer": "fertilizer",
+      "pesticide": "pesticide"
+    };
+    const actionImageState = imageStateMap[actionType];
+    
+    if (actionImageState) {
+      // 즉시 이미지 변경 (updateUI를 호출하지 않고 직접 이미지만 업데이트)
+      updateCropImage(actionImageState);
+      
+      // 2초 후 HP에 따라 상태 결정
+      setTimeout(() => {
+        if (!gameState.hasPest) {
+          if (gameState.hp < 70) {
+            gameState.currentImageState = "sad";
+          } else {
+            gameState.currentImageState = "normal";
+          }
+          updateCropImage();
+        }
+      }, 2000);
+    }
+
     // 즉시 평가하지 않고 행동만 기록
     // 간단한 확인 메시지만 표시
     const actionNames = {
@@ -786,8 +975,13 @@ async function performAction(actionType) {
     // 게임 상태 저장
     await saveGameState();
     
-    // UI 업데이트 (HP는 변경하지 않음)
-    updateUI();
+    // UI 업데이트 (이미지는 이미 변경했으므로 제외)
+    // updateUI()는 이미지를 다시 업데이트하므로 호출하지 않음
+    // 대신 필요한 UI 요소만 업데이트
+    const currentDayForUI = calculateCurrentDay();
+    if (dayCount) {
+      dayCount.textContent = currentDayForUI;
+    }
 
   } catch (error) {
     console.error("행동 실행 실패:", error);
@@ -830,6 +1024,8 @@ async function restartGame() {
   gameState.lastUpdateTime = null;
   gameState.currentWeather = null;
   gameState.weatherDate = null;
+  gameState.currentImageState = "normal";
+  gameState.hasPest = false;
   
   await saveGameState();
   hideGameOverModal();
@@ -1127,6 +1323,8 @@ async function resetGame() {
   gameState.lastUpdateTime = null;
   gameState.currentWeather = null;
   gameState.weatherDate = null;
+  gameState.currentImageState = "normal";
+  gameState.hasPest = false;
   
   await saveGameState();
   updateUI();
