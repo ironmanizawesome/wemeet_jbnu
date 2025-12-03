@@ -796,7 +796,7 @@ def evaluate_game_action(req: GameActionRequest):
                 # 날씨가 맑은 경우에만 정상 평가
                 if req.currentWeather == "맑음" or not req.currentWeather:
                     # 빈도 파싱: "매일", "주 2~3회", "2~3일마다" 등
-                    if "매일" in watering_freq or "겉흙 마르면" in watering_freq:
+                    if "매일" in watering_freq:
                         # 매일 물을 주는 것이 정상
                         if water_count_today == 1:
                             hp_change += 3
@@ -804,6 +804,28 @@ def evaluate_game_action(req: GameActionRequest):
                         elif water_count_today > 1:
                             hp_change -= 5
                             feedback_parts.append("하루에 여러 번 물을 주면 과습이 될 수 있어요! (-5)")
+                    elif "겉흙 마르면" in watering_freq:
+                        # "겉흙 마르면"은 필요할 때만 주는 것 (매일이 아님)
+                        # 특히 감자 초반(0~10일)에는 과습을 피해야 함
+                        if water_count_today == 0:
+                            # 물을 주지 않았어도 페널티 없음 (겉흙이 마르지 않았을 수 있음)
+                            pass
+                        elif water_count_today == 1:
+                            # 한 번 주는 것은 괜찮지만, 매일 주면 과습
+                            # 최근 며칠간 물을 준 횟수 확인
+                            recent_water_count = sum(1 for a in req.actions 
+                                                    if a.get("type") == "water" 
+                                                    and a.get("day") >= req.day - 2 
+                                                    and a.get("day") <= req.day)
+                            if recent_water_count >= 3:  # 최근 3일간 3번 이상 주면 과습
+                                hp_change -= 5
+                                feedback_parts.append("'겉흙 마르면' 주는 것이므로 매일 주면 과습이 될 수 있어요! 특히 초반에는 과습을 피해야 합니다. (-5)")
+                            else:
+                                hp_change += 1
+                                feedback_parts.append("적절한 물주기입니다! (+1)")
+                        elif water_count_today > 1:
+                            hp_change -= 5
+                            feedback_parts.append("하루에 여러 번 물을 주면 과습이 될 수 있어요! '겉흙 마르면' 주는 것이므로 필요할 때만 주세요. (-5)")
                     elif "주 2~3회" in watering_freq:
                         # 주 2~3회면 3~4일마다 한 번
                         if water_count_today == 1:
@@ -989,9 +1011,13 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
                 
                 # 권장 물주기 빈도에 따라 방치 여부 판단
                 should_water = False
-                if "매일" in watering_freq or "겉흙 마르면" in watering_freq:
+                if "매일" in watering_freq:
                     # 매일 물을 줘야 함
                     should_water = (days_since_last_water >= 1)
+                elif "겉흙 마르면" in watering_freq:
+                    # "겉흙 마르면"은 필요할 때만 주는 것이므로 방치 페널티 없음
+                    # (겉흙이 마르지 않았을 수 있음)
+                    should_water = False
                 elif "주 2~3회" in watering_freq:
                     # 주 2~3회 = 3~4일마다 한 번
                     should_water = (days_since_last_water >= 4)
@@ -1059,6 +1085,31 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
             # 피드백 수집
             if eval_result.feedback:
                 all_feedbacks.append(eval_result.feedback)
+        
+        # 비료 미제공 페널티 체크
+        fertilizing_period = get_fertilizing_period(req.cropName)
+        if fertilizing_period:
+            # 비료 주기 정보에서 숫자 추출
+            period_match = re.search(r"(\d+)", fertilizing_period)
+            if period_match:
+                expected_days = int(period_match.group(1))
+                # 해당 날짜에 비료를 주었는지 확인
+                fertilizer_given_today = any(a.get("type") == "fertilizer" for a in previous_day_actions)
+                
+                # 마지막으로 비료를 준 날짜 확인
+                fertilizer_actions = [a for a in req.actions if a.get("type") == "fertilizer" and a.get("day") < req.day]
+                days_since_last_fertilizer = req.day
+                if fertilizer_actions:
+                    last_fertilizer_day = max([a.get("day") for a in fertilizer_actions])
+                    days_since_last_fertilizer = req.day - last_fertilizer_day
+                
+                # 비료를 줘야 하는 시기인데 주지 않았으면 페널티
+                if not fertilizer_given_today and days_since_last_fertilizer >= expected_days + 2:
+                    # 비료를 줘야 하는데 주지 않음 (여유 2일 포함)
+                    fertilizer_penalty = -2
+                    total_hp_change += fertilizer_penalty
+                    current_hp = max(0, min(100, current_hp + fertilizer_penalty))
+                    all_feedbacks.append(f"비료를 주는 시기({expected_days}일 후)가 지났는데 비료를 주지 않아 건강도가 감소했습니다... (-2)")
         
         # 최종 HP 계산
         final_hp = max(0, min(100, req.currentHp + total_hp_change))
