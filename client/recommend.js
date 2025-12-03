@@ -175,6 +175,7 @@ function renderCrops(crops) {
         <div class="crop-info" style="opacity: ${isAvailable ? '1' : '0.5'}">📅 ${seasonText}</div>
         <div class="crop-info" style="opacity: ${isAvailable ? '1' : '0.5'}">💡 ${purposeText}</div>
         <div class="crop-level ${levelClass}" style="opacity: ${isAvailable ? '1' : '0.5'}">난이도: ${level}</div>
+        ${isAvailable ? '<div style="margin-top: 12px; font-size: 12px; color: var(--muted); text-align: center;">💡 더블클릭: 상세 정보 보기</div>' : ''}
       </div>
     `;
   }).join("");
@@ -187,9 +188,16 @@ function renderCrops(crops) {
       card.style.cursor = "not-allowed";
     }
     
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
       // 선택 불가능한 작물은 클릭 무시
       if (!isAvailable) {
+        return;
+      }
+
+      // 더블클릭 시 상세 정보 페이지로 이동
+      if (e.detail === 2) {
+        const cropName = card.dataset.cropName;
+        window.location.href = `crop_detail.html?crop=${encodeURIComponent(cropName)}`;
         return;
       }
 

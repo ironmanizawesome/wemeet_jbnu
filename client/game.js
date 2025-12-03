@@ -20,32 +20,119 @@ const CROP_FOLDER_NAMES = {
   "부추": "chive"
 };
 
-// 날짜에 따른 레벨 계산 (7일마다 레벨 증가)
-function calculateLevel(day) {
-  if (day < 7) return 1;
-  if (day < 14) return 2;
-  if (day < 21) return 3;
+// 작물별 재배 기간 캐시
+let cropGrowingPeriod = null;
+
+// 작물 재배 기간 가져오기
+async function loadCropGrowingPeriod() {
+  if (cropGrowingPeriod !== null) {
+    return cropGrowingPeriod;
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE}/crops/${encodeURIComponent(gameState.cropName)}`);
+    if (response.ok) {
+      const data = await response.json();
+      cropGrowingPeriod = data.growing_period || null;
+      return cropGrowingPeriod;
+    }
+  } catch (error) {
+    console.error("재배 기간 가져오기 실패:", error);
+  }
+  
+  // 기본값: 150일 (5개월)
+  return 150;
+}
+
+// 날짜에 따른 레벨 계산 (재배 기간을 4구간으로 나눔)
+async function calculateLevel(day) {
+  const growingPeriod = await loadCropGrowingPeriod();
+  
+  if (!growingPeriod) {
+    // 재배 기간 정보가 없으면 기본값 사용 (7일마다 레벨 증가)
+    if (day < 7) return 1;
+    if (day < 14) return 2;
+    if (day < 21) return 3;
+    return 4;
+  }
+  
+  // 재배 기간을 4구간으로 나눔
+  const quarter = growingPeriod / 4;
+  
+  if (day < quarter) return 1;           // 0~25%
+  if (day < quarter * 2) return 2;      // 25~50%
+  if (day < quarter * 3) return 3;      // 50~75%
+  return 4;                              // 75~100%
+}
+
+// 동기 버전 (이미 재배 기간을 로드한 경우)
+function calculateLevelSync(day) {
+  if (cropGrowingPeriod === null) {
+    // 아직 로드되지 않았으면 기본값 사용
+    if (day < 7) return 1;
+    if (day < 14) return 2;
+    if (day < 21) return 3;
+    return 4;
+  }
+  
+  const quarter = cropGrowingPeriod / 4;
+  
+  if (day < quarter) return 1;
+  if (day < quarter * 2) return 2;
+  if (day < quarter * 3) return 3;
   return 4;
 }
 
+// 물주기 애니메이션 관련 변수
+let wateringAnimationInterval = null;
+let wateringImageIndex = 0; // 0 또는 1 (water 또는 water2)
+
 // 작물 이미지 경로 생성
-function getCropImagePath(state = null) {
+function getCropImagePath(state = null, useWater2 = false) {
   const cropFolder = CROP_FOLDER_NAMES[gameState.cropName];
   if (!cropFolder) {
     // 이미지가 없는 작물은 이모지 사용
     return null;
   }
   
-  const level = calculateLevel(gameState.day || 0);
+  const level = calculateLevelSync(gameState.day || 0);
   
   // 상태 우선순위: 명시적 상태(행동 중) > 병해충 > HP 기반 sad > 일반 상태
   let imageState;
   
   // 명시적으로 전달된 상태가 있으면 우선 사용 (watering, fertilizer, pesticide)
   if (state && (state === "watering" || state === "fertilizer" || state === "pesticide")) {
-    imageState = state;
+    // 물주기 상태 처리
+    if (state === "watering") {
+      // 병해충이 있으면 물주기 이미지는 표시하지 않고 병해충 우선
+      // 하지만 물주기 애니메이션 중이므로 물주기 이미지 표시
+      // HP가 70 미만이면 sad&water 또는 sad&water2 사용
+      if (gameState.hp < 70) {
+        if (useWater2) {
+          imageState = "sad&water2";
+        } else {
+          imageState = "sad&water";
+        }
+      } else {
+        // 정상 상태에서 물주기
+        if (useWater2) {
+          imageState = "water2";
+        } else {
+          // 레벨에 따라 water 또는 watering 사용
+          // Lv1, Lv4는 water, Lv2, Lv3는 watering
+          if (level === 1 || level === 4) {
+            imageState = "water";
+          } else {
+            imageState = "watering";
+          }
+        }
+      }
+    } else {
+      // 비료/농약은 그대로 사용
+      imageState = state;
+    }
   }
-  // 병해충이 있으면 sickness 우선
+  // 병해충이 있으면 sickness 우선 (행동 중이 아닐 때)
   else if (gameState.hasPest) {
     imageState = "sickness";
   }
@@ -64,15 +151,53 @@ function getCropImagePath(state = null) {
   return `images/${cropFolder}/${cropNameEng}Lv${level}_${imageState}.png`;
 }
 
+// 물주기 애니메이션 시작
+function startWateringAnimation() {
+  // 기존 애니메이션 정리
+  stopWateringAnimation();
+  
+  wateringImageIndex = 0;
+  
+  // 첫 번째 이미지 즉시 표시
+  updateCropImage("watering", false);
+  
+  // 0.5초마다 이미지 번갈아가며 표시
+  wateringAnimationInterval = setInterval(() => {
+    wateringImageIndex = wateringImageIndex === 0 ? 1 : 0;
+    const useWater2 = wateringImageIndex === 1;
+    updateCropImage("watering", useWater2);
+  }, 500); // 0.5초 간격
+}
+
+// 물주기 애니메이션 중지
+function stopWateringAnimation() {
+  if (wateringAnimationInterval) {
+    clearInterval(wateringAnimationInterval);
+    wateringAnimationInterval = null;
+  }
+}
+
 // 작물 이미지 업데이트
-function updateCropImage(state = null) {
+function updateCropImage(state = null, useWater2 = false) {
   const displayElement = document.getElementById("cropDisplay");
   if (!displayElement) {
     console.warn("cropDisplay 요소를 찾을 수 없습니다.");
     return;
   }
   
-  const imagePath = getCropImagePath(state);
+  // 물주기 상태가 아니고 애니메이션이 실행 중이 아니면 애니메이션 중지
+  // (애니메이션 중에는 물주기 상태로 유지)
+  if (state !== "watering" && !wateringAnimationInterval) {
+    stopWateringAnimation();
+  }
+  
+  // state가 null이고 currentImageState도 null이면 실제 상태에 맞게 결정
+  // (병해충 > HP 기반 sad > normal)
+  if (state === null && gameState.currentImageState === null) {
+    state = null; // getCropImagePath에서 자동으로 결정하도록
+  }
+  
+  const imagePath = getCropImagePath(state, useWater2);
   
   if (imagePath) {
     // img 태그로 변경
@@ -291,6 +416,9 @@ async function initGame() {
   gameState.userId = username;
   gameState.cropName = selectedCropName;
 
+  // 작물 재배 기간 로드
+  await loadCropGrowingPeriod();
+  
   // 게임 상태 불러오기
   await loadGameState();
   
@@ -399,6 +527,7 @@ window.addEventListener("beforeunload", () => {
   if (timeCheckInterval) {
     clearInterval(timeCheckInterval);
   }
+  stopWateringAnimation();
 });
 
 // 게임 상태 로드
@@ -593,35 +722,9 @@ async function evaluatePreviousDayActions(previousDay) {
     gameState.hp = Math.max(0, Math.min(100, result.newHp));
     const hpChange = gameState.hp - previousHp;
     
-    // HP가 감소했을 때 일시적으로 sad 표시
-    if (hpChange < 0 && !gameState.hasPest) {
-      gameState.currentImageState = "sad";
-      updateCropImage("sad");
-      
-      // 3초 후 HP에 따라 상태 결정
-      setTimeout(() => {
-        if (!gameState.hasPest) {
-          if (gameState.hp < 70) {
-            // HP가 70 미만이면 계속 sad 유지
-            gameState.currentImageState = "sad";
-          } else {
-            // HP가 70 이상이면 normal로 복귀
-            gameState.currentImageState = "normal";
-          }
-          updateCropImage();
-        }
-      }, 3000);
-    } else {
-      // HP가 증가하거나 변화가 없을 때는 HP에 따라 상태 결정
-      if (!gameState.hasPest) {
-        if (gameState.hp < 70) {
-          gameState.currentImageState = "sad";
-        } else {
-          gameState.currentImageState = "normal";
-        }
-        updateCropImage();
-      }
-    }
+    // HP 변화에 따라 이미지 상태 업데이트
+    gameState.currentImageState = null; // 실제 상태에 맞게 결정하도록
+    updateCropImage();
     
     // HP가 감소했을 때 말풍선으로 피드백 표시
     if (hpChange < 0 && result.feedbacks && result.feedbacks.length > 0) {
@@ -691,8 +794,8 @@ async function checkPestOccurrence(day) {
       // 병해충 발생 시 HP 감소
       gameState.hp = Math.max(0, gameState.hp + result.hpChange);
       gameState.hasPest = true; // 병해충 상태 설정
-      gameState.currentImageState = "sickness";
-      updateCropImage("sickness");
+      gameState.currentImageState = null; // 실제 상태에 맞게 결정하도록
+      updateCropImage();
       
       if (result.feedback) {
         showFeedback(result.feedback, "bad");
@@ -709,14 +812,10 @@ async function checkPestOccurrence(day) {
         a => a.type === "pesticide" && a.day >= (gameState.day || 0) - 1
       );
       if (recentPesticide.length > 0) {
-      // 농약을 살포했으면 병해충 상태 해제
-      gameState.hasPest = false;
-      if (gameState.hp < 70) {
-        gameState.currentImageState = "sad";
-      } else {
-        gameState.currentImageState = "normal";
-      }
-      updateCropImage();
+        // 농약을 살포했으면 병해충 상태 해제
+        gameState.hasPest = false;
+        gameState.currentImageState = null; // 실제 상태에 맞게 결정하도록
+        updateCropImage();
       }
     }
     
@@ -857,13 +956,134 @@ async function saveGameState() {
   }
 }
 
+// 날씨별 온도 범위 (월별 평균 온도 기반)
+const TEMPERATURE_BY_MONTH = {
+  1: { min: -5, max: 5 },   // 1월: -5~5°C
+  2: { min: -2, max: 8 },   // 2월: -2~8°C
+  3: { min: 3, max: 15 },   // 3월: 3~15°C
+  4: { min: 10, max: 20 },  // 4월: 10~20°C
+  5: { min: 15, max: 25 },  // 5월: 15~25°C
+  6: { min: 20, max: 28 },  // 6월: 20~28°C
+  7: { min: 23, max: 32 },  // 7월: 23~32°C
+  8: { min: 23, max: 32 },  // 8월: 23~32°C
+  9: { min: 18, max: 26 },  // 9월: 18~26°C
+  10: { min: 12, max: 20 }, // 10월: 12~20°C
+  11: { min: 5, max: 15 },  // 11월: 5~15°C
+  12: { min: -2, max: 8 }   // 12월: -2~8°C
+};
+
+// 날씨별 온도 보정값 (기본 온도에서 조정)
+const TEMPERATURE_ADJUSTMENT = {
+  "맑음": 0,      // 기본 온도
+  "비": -3,       // 비 오면 3도 낮음
+  "눈": -8,       // 눈 오면 8도 낮음
+  "흐림": -2,     // 흐리면 2도 낮음
+  "안개": -1,     // 안개면 1도 낮음
+  "천둥": -1,     // 천둥이면 1도 낮음
+  "바람": -2      // 바람이면 2도 낮음
+};
+
+// 날씨별 습도 범위
+const HUMIDITY_BY_WEATHER = {
+  "맑음": { min: 40, max: 60 },
+  "비": { min: 75, max: 95 },
+  "눈": { min: 60, max: 80 },
+  "흐림": { min: 65, max: 85 },
+  "안개": { min: 85, max: 95 },
+  "천둥": { min: 70, max: 90 },
+  "바람": { min: 30, max: 50 }
+};
+
+// 현재 온도 계산
+function calculateCurrentTemperature() {
+  const month = getCurrentMonth();
+  const weather = gameState.currentWeather || "맑음";
+  const monthTemp = TEMPERATURE_BY_MONTH[month] || TEMPERATURE_BY_MONTH[12];
+  const adjustment = TEMPERATURE_ADJUSTMENT[weather] || 0;
+  
+  // 기본 온도 범위에서 랜덤 선택 후 보정
+  const baseTemp = monthTemp.min + Math.random() * (monthTemp.max - monthTemp.min);
+  const currentTemp = Math.round(baseTemp + adjustment);
+  
+  return currentTemp;
+}
+
+// 현재 습도 계산
+function calculateCurrentHumidity() {
+  const weather = gameState.currentWeather || "맑음";
+  const humidityRange = HUMIDITY_BY_WEATHER[weather] || HUMIDITY_BY_WEATHER["맑음"];
+  
+  const humidity = Math.round(
+    humidityRange.min + Math.random() * (humidityRange.max - humidityRange.min)
+  );
+  
+  return humidity;
+}
+
+// 일조량 계산 (날씨 기반)
+function calculateSunlight() {
+  const weather = gameState.currentWeather || "맑음";
+  const sunlightMap = {
+    "맑음": "강함",
+    "비": "약함",
+    "눈": "약함",
+    "흐림": "보통",
+    "안개": "약함",
+    "천둥": "보통",
+    "바람": "보통"
+  };
+  
+  return sunlightMap[weather] || "보통";
+}
+
+// 토양 온도 계산 (대기 온도보다 약간 낮음)
+function calculateSoilTemperature() {
+  const airTemp = calculateCurrentTemperature();
+  // 토양 온도는 대기 온도보다 2~5도 낮음
+  const soilTemp = Math.round(airTemp - (2 + Math.random() * 3));
+  return soilTemp;
+}
+
+// 환경 정보 UI 업데이트 (실시간 날씨 기반)
+function updateEnvironmentUI() {
+  if (!gameState.currentWeather) {
+    return;
+  }
+  
+  const currentTemp = calculateCurrentTemperature();
+  const currentHumidity = calculateCurrentHumidity();
+  const currentSunlight = calculateSunlight();
+  const currentSoilTemp = calculateSoilTemperature();
+  
+  const tempEl = document.getElementById("envTemperature");
+  const humidityEl = document.getElementById("envHumidity");
+  const sunlightEl = document.getElementById("envSunlight");
+  const soilTempEl = document.getElementById("envSoilTemp");
+  
+  if (tempEl) {
+    tempEl.textContent = `${currentTemp}°C`;
+  }
+  if (humidityEl) {
+    humidityEl.textContent = `${currentHumidity}%`;
+  }
+  if (sunlightEl) {
+    sunlightEl.textContent = currentSunlight;
+  }
+  if (soilTempEl) {
+    soilTempEl.textContent = `${currentSoilTemp}°C`;
+  }
+}
+
 // UI 업데이트
 function updateUI() {
   // 작물 이름
   cropNameEl.textContent = gameState.cropName;
   
   // 작물 이미지 업데이트 (상태에 따라)
-  updateCropImage();
+  // 물주기 애니메이션이 실행 중이면 이미지 업데이트 건너뛰기
+  if (!wateringAnimationInterval) {
+    updateCropImage();
+  }
   
   // HP 바
   const currentHp = Math.max(0, Math.min(100, gameState.hp));
@@ -881,11 +1101,12 @@ function updateUI() {
     weatherText.textContent = gameState.currentWeather;
   }
   
-  // 수확 버튼 표시 여부 (예: 7일 이상 되면)
-  if (currentDay >= 7) {
+  // 환경 정보 UI 업데이트 (현재 날씨 기반 실시간 온도/습도)
+  updateEnvironmentUI();
+  
+  // 수확 버튼은 항상 표시
+  if (harvestButton) {
     harvestButton.style.display = "block";
-  } else {
-    harvestButton.style.display = "none";
   }
   
   // 다음 날 버튼 표시 여부 (테스트 모드일 때만)
@@ -946,20 +1167,29 @@ async function performAction(actionType) {
     const actionImageState = imageStateMap[actionType];
     
     if (actionImageState) {
-      // 즉시 이미지 변경 (updateUI를 호출하지 않고 직접 이미지만 업데이트)
-      updateCropImage(actionImageState);
-      
-      // 2초 후 HP에 따라 상태 결정
-      setTimeout(() => {
-        if (!gameState.hasPest) {
-          if (gameState.hp < 70) {
-            gameState.currentImageState = "sad";
-          } else {
-            gameState.currentImageState = "normal";
-          }
+      // 물주기인 경우 애니메이션 시작
+      if (actionType === "water") {
+        // 물주기 애니메이션 시작
+        startWateringAnimation();
+        
+        // 2초 후 애니메이션 중지하고 원래 상태로 복귀
+        setTimeout(() => {
+          stopWateringAnimation();
+          // currentImageState를 null로 설정하여 실제 상태에 맞게 이미지 결정
+          gameState.currentImageState = null;
           updateCropImage();
-        }
-      }, 2000);
+        }, 2000);
+      } else {
+        // 비료/농약은 일반 이미지 표시
+        updateCropImage(actionImageState);
+        
+        // 2초 후 원래 상태로 복귀
+        setTimeout(() => {
+          // currentImageState를 null로 설정하여 실제 상태에 맞게 이미지 결정
+          gameState.currentImageState = null;
+          updateCropImage();
+        }, 2000);
+      }
     }
 
     // 즉시 평가하지 않고 행동만 기록
@@ -1125,6 +1355,17 @@ async function harvest() {
   
   const currentDay = calculateCurrentDay();
   
+  // 재배 기간 확인
+  const growingPeriod = await loadCropGrowingPeriod();
+  if (growingPeriod) {
+    const harvestThreshold = growingPeriod * 0.9;
+    if (currentDay < harvestThreshold) {
+      const remainingDays = Math.ceil(harvestThreshold - currentDay);
+      showFeedback(`아직 수확 시기가 아닙니다. 약 ${remainingDays}일 후에 수확할 수 있습니다.`, "error");
+      return;
+    }
+  }
+  
   if (gameState.hp < 70) {
     showFeedback("작물 건강도가 70 미만입니다. 더 잘 키워주세요!", "error");
     return;
@@ -1182,7 +1423,11 @@ async function getCropGuide() {
     const response = await fetch(`${API_BASE}/game/crop-guide/${encodeURIComponent(gameState.cropName)}`);
     if (response.ok) {
       const data = await response.json();
-      return data.guide || "";
+      return {
+        guide: data.guide || "",
+        wateringInfo: data.watering_info || {},
+        fertilizingPeriod: data.fertilizing_period || null
+      };
     }
   } catch (error) {
     console.error("작물 가이드 가져오기 실패:", error);
@@ -1190,48 +1435,176 @@ async function getCropGuide() {
   return null;
 }
 
+// 수확 가이드 가져오기
+async function getHarvestGuide() {
+  try {
+    const cropData = await getCropGuide();
+    const growingPeriod = await loadCropGrowingPeriod();
+    const currentDay = calculateCurrentDay();
+    
+    let harvestMessage = `🌾 ${gameState.cropName} 수확 가이드\n\n`;
+    harvestMessage += `═══════════════════════════════\n`;
+    harvestMessage += `📅 수확 시기\n`;
+    harvestMessage += `═══════════════════════════════\n\n`;
+    
+    if (growingPeriod) {
+      const harvestThreshold = Math.ceil(growingPeriod * 0.9);
+      harvestMessage += `• 재배 기간: 약 ${growingPeriod}일\n`;
+      harvestMessage += `• 수확 가능 시기: ${harvestThreshold}일 이후\n`;
+      harvestMessage += `• 권장 수확 시기: ${growingPeriod}일 이후\n`;
+      harvestMessage += `• 현재 재배 일수: ${currentDay}일\n\n`;
+    } else {
+      harvestMessage += `• 재배 기간 정보를 불러올 수 없습니다.\n\n`;
+    }
+    
+    harvestMessage += `═══════════════════════════════\n`;
+    harvestMessage += `💧 물주기 가이드\n`;
+    harvestMessage += `═══════════════════════════════\n\n`;
+    
+    if (cropData && cropData.wateringInfo) {
+      const wateringInfo = cropData.wateringInfo;
+      if (wateringInfo["0~10일"]) {
+        harvestMessage += `• 0~10일: ${wateringInfo["0~10일"]}\n`;
+      }
+      if (wateringInfo["10~35일"]) {
+        harvestMessage += `• 10~35일: ${wateringInfo["10~35일"]}\n`;
+      }
+      if (wateringInfo["35+"]) {
+        harvestMessage += `• 35일 이후: ${wateringInfo["35+"]}\n`;
+      }
+      if (Object.keys(wateringInfo).length === 0) {
+        harvestMessage += `• 물주기 정보가 없습니다.\n`;
+      }
+    } else {
+      harvestMessage += `• 물주기 정보를 불러올 수 없습니다.\n`;
+    }
+    
+    harvestMessage += `\n`;
+    harvestMessage += `═══════════════════════════════\n`;
+    harvestMessage += `🌿 비료 주기 가이드\n`;
+    harvestMessage += `═══════════════════════════════\n\n`;
+    
+    if (cropData && cropData.fertilizingPeriod) {
+      harvestMessage += `• 비료 주기: ${cropData.fertilizingPeriod}\n`;
+    } else {
+      harvestMessage += `• 비료 주기 정보가 없습니다.\n`;
+    }
+    
+    harvestMessage += `\n`;
+    harvestMessage += `═══════════════════════════════\n`;
+    harvestMessage += `✅ 수확 조건\n`;
+    harvestMessage += `═══════════════════════════════\n\n`;
+    harvestMessage += `• 재배 기간의 90% 이상 경과\n`;
+    harvestMessage += `• 작물 건강도 70 이상\n`;
+    harvestMessage += `• 위 조건을 만족하면 수확 버튼을 눌러 수확하세요!\n\n`;
+    
+    if (cropData && cropData.guide) {
+      harvestMessage += `═══════════════════════════════\n`;
+      harvestMessage += `📖 ${gameState.cropName} 재배 정보\n`;
+      harvestMessage += `═══════════════════════════════\n\n`;
+      // 가이드에서 수확 관련 정보 추출
+      const guideLines = cropData.guide.split('\n').filter(line => line.trim());
+      const relevantLines = guideLines.filter(line => 
+        line.includes('수확') || 
+        line.includes('재배') || 
+        line.includes('시기') ||
+        line.includes('기간')
+      );
+      
+      if (relevantLines.length > 0) {
+        harvestMessage += relevantLines.slice(0, 10).join('\n');
+      } else {
+        harvestMessage += guideLines.slice(0, 10).join('\n');
+      }
+      
+      if (guideLines.length > 10) {
+        harvestMessage += '\n\n... (더 자세한 정보는 게임을 진행하며 확인하세요)';
+      }
+    }
+    
+    return harvestMessage;
+  } catch (error) {
+    console.error("수확 가이드 가져오기 실패:", error);
+    return null;
+  }
+}
+
 // 도움말 버튼
 document.getElementById("helpButton").addEventListener("click", async (e) => {
   e.preventDefault();
   
-  const guide = await getCropGuide();
+  const harvestGuide = await getHarvestGuide();
   
-  let helpMessage = `🌱 ${gameState.cropName} 작물 관리 가이드\n\n`;
-  helpMessage += `═══════════════════════════════\n`;
-  helpMessage += `📌 기본 관리 방법\n`;
-  helpMessage += `═══════════════════════════════\n\n`;
-  helpMessage += `💧 물 주기:\n`;
-  helpMessage += `  • 적절한 시기에 물을 주세요\n`;
-  helpMessage += `  • 습한 날씨(비, 눈, 천둥)에는 물을 주지 마세요\n`;
-  helpMessage += `  • 과습은 뿌리를 썩게 할 수 있어요\n\n`;
-  helpMessage += `🌿 비료 주기:\n`;
-  helpMessage += `  • 작물에 맞는 비료를 적당한 양만 주세요\n`;
-  helpMessage += `  • 너무 많이 주면 오히려 해로울 수 있어요\n\n`;
-  helpMessage += `💊 농약 살포:\n`;
-  helpMessage += `  • 병해충이 발생했을 때 사용하세요\n`;
-  helpMessage += `  • 예방 차원에서 주기적으로 사용할 수도 있어요\n\n`;
-  helpMessage += `═══════════════════════════════\n`;
-  helpMessage += `💡 게임 팁\n`;
-  helpMessage += `═══════════════════════════════\n\n`;
-  helpMessage += `• 행동을 하면 다음 날에 효과가 나타나요\n`;
-  helpMessage += `• 작물 건강도가 70 이상이면 수확할 수 있어요\n`;
-  helpMessage += `• 날씨에 따라 관리 방법을 조절하세요\n`;
-  helpMessage += `• 작물이 말풍선으로 피드백을 줄 거예요\n\n`;
-  
-  if (guide) {
+  if (harvestGuide) {
+    alert(harvestGuide);
+  } else {
+    // 기본 가이드 표시
+    const cropData = await getCropGuide();
+    
+    let helpMessage = `🌱 ${gameState.cropName} 작물 관리 가이드\n\n`;
+    
     helpMessage += `═══════════════════════════════\n`;
-    helpMessage += `📖 ${gameState.cropName} 상세 정보\n`;
+    helpMessage += `💧 물주기 가이드\n`;
     helpMessage += `═══════════════════════════════\n\n`;
-    // 가이드 텍스트를 간단하게 정리
-    const guideLines = guide.split('\n').filter(line => line.trim());
-    const importantLines = guideLines.slice(0, 15); // 처음 15줄만 표시
-    helpMessage += importantLines.join('\n');
-    if (guideLines.length > 15) {
-      helpMessage += '\n\n... (더 자세한 정보는 게임을 진행하며 확인하세요)';
+    
+    if (cropData && cropData.wateringInfo) {
+      const wateringInfo = cropData.wateringInfo;
+      if (wateringInfo["0~10일"]) {
+        helpMessage += `• 0~10일: ${wateringInfo["0~10일"]}\n`;
+      }
+      if (wateringInfo["10~35일"]) {
+        helpMessage += `• 10~35일: ${wateringInfo["10~35일"]}\n`;
+      }
+      if (wateringInfo["35+"]) {
+        helpMessage += `• 35일 이후: ${wateringInfo["35+"]}\n`;
+      }
+      if (Object.keys(wateringInfo).length === 0) {
+        helpMessage += `• 물주기 정보가 없습니다.\n`;
+      }
+    } else {
+      helpMessage += `• 물주기 정보를 불러올 수 없습니다.\n`;
     }
+    
+    helpMessage += `\n`;
+    helpMessage += `═══════════════════════════════\n`;
+    helpMessage += `🌿 비료 주기 가이드\n`;
+    helpMessage += `═══════════════════════════════\n\n`;
+    
+    if (cropData && cropData.fertilizingPeriod) {
+      helpMessage += `• 비료 주기: ${cropData.fertilizingPeriod}\n`;
+    } else {
+      helpMessage += `• 비료 주기 정보가 없습니다.\n`;
+    }
+    
+    helpMessage += `\n`;
+    helpMessage += `═══════════════════════════════\n`;
+    helpMessage += `📌 기본 관리 방법\n`;
+    helpMessage += `═══════════════════════════════\n\n`;
+    helpMessage += `💧 물 주기:\n`;
+    helpMessage += `  • 적절한 시기에 물을 주세요\n`;
+    helpMessage += `  • 습한 날씨(비, 눈, 천둥)에는 물을 주지 마세요\n`;
+    helpMessage += `  • 과습은 뿌리를 썩게 할 수 있어요\n\n`;
+    helpMessage += `🌿 비료 주기:\n`;
+    helpMessage += `  • 작물에 맞는 비료를 적당한 양만 주세요\n`;
+    helpMessage += `  • 너무 많이 주면 오히려 해로울 수 있어요\n\n`;
+    helpMessage += `💊 농약 살포:\n`;
+    helpMessage += `  • 병해충이 발생했을 때 사용하세요\n`;
+    helpMessage += `  • 예방 차원에서 주기적으로 사용할 수도 있어요\n\n`;
+    
+    if (cropData && cropData.guide) {
+      helpMessage += `═══════════════════════════════\n`;
+      helpMessage += `📖 ${gameState.cropName} 상세 정보\n`;
+      helpMessage += `═══════════════════════════════\n\n`;
+      const guideLines = cropData.guide.split('\n').filter(line => line.trim());
+      const importantLines = guideLines.slice(0, 15);
+      helpMessage += importantLines.join('\n');
+      if (guideLines.length > 15) {
+        helpMessage += '\n\n... (더 자세한 정보는 게임을 진행하며 확인하세요)';
+      }
+    }
+    
+    alert(helpMessage);
   }
-  
-  alert(helpMessage);
 });
 
 // Admin 모드 활성화/비활성화

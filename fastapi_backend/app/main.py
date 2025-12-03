@@ -13,7 +13,14 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from .recommendation import CropRecommendationService
 from .game_service import get_crop_guide_for_game
-from .game_service import get_crop_guide_for_game
+from .crop_data_parser import (
+    get_watering_frequency,
+    get_fertilizing_period,
+    get_growing_period,
+    get_sickness_info,
+    extract_temperature_from_text,
+    extract_humidity_from_text
+)
 
 
 # =========================================================
@@ -427,6 +434,134 @@ def create_recommendations(payload: RecommendationRequest):
 
 
 # =========================================================
+# 10. 작물 상세 정보 (환경 정보 포함)
+# =========================================================
+def get_crop_environment_data(crop_name: str) -> dict:
+    """작물별 환경 정보 반환 (온도, 습도 등)"""
+    # 작물별 일반적인 환경 정보 데이터
+    env_data = {
+        "당근": {
+            "temperature": "15~25°C",
+            "temperature_note": "생육 최적 온도: 15~25°C",
+            "humidity": "60~80%",
+            "humidity_note": "토양 수분 70~80% 유지 (생육 중기)",
+            "sunlight": "충분한 일조",
+            "sunlight_note": "광합성을 위해 충분한 햇빛 필요",
+            "soil_temperature": "10~20°C",
+            "soil_temperature_note": "파종 적정 지온: 10~20°C"
+        },
+        "옥수수": {
+            "temperature": "20~30°C",
+            "temperature_note": "생육 최적 온도: 20~30°C (서리에 약함)",
+            "humidity": "50~70%",
+            "humidity_note": "과습에 약함, 물 빠짐이 좋은 밭 필요",
+            "sunlight": "매우 높음",
+            "sunlight_note": "하루 종일 햇빛이 드는 곳",
+            "soil_temperature": "15°C 이상",
+            "soil_temperature_note": "늦서리 후 파종 (4월 중순~6월 중순)"
+        },
+        "고구마": {
+            "temperature": "20~30°C",
+            "temperature_note": "생육 최적 온도: 20~30°C",
+            "humidity": "적당한 수분",
+            "humidity_note": "물 빠짐이 생명, 과습에 약함",
+            "sunlight": "매우 중요",
+            "sunlight_note": "햇빛을 많이 받아야 땅속 고구마가 굵어짐",
+            "soil_temperature": "15°C 이상",
+            "soil_temperature_note": "늦서리 후 정식 (4월 말~6월 초)"
+        },
+        "토마토": {
+            "temperature": "20~25°C (주간), 15~18°C (야간)",
+            "temperature_note": "생육 최적 온도: 주간 20~25°C, 야간 15~18°C",
+            "humidity": "60~70%",
+            "humidity_note": "과습 시 병해 발생, 환기 중요",
+            "sunlight": "매우 중요",
+            "sunlight_note": "햇빛 부족 시 열매 맺힘 불량",
+            "soil_temperature": "15°C 이상",
+            "soil_temperature_note": "정식 적정 지온: 15°C 이상"
+        },
+        "오이": {
+            "temperature": "25~30°C (주간), 18~20°C (야간)",
+            "temperature_note": "생육 최적 온도: 주간 25~30°C, 야간 18~20°C",
+            "humidity": "70~80%",
+            "humidity_note": "습도 높을 시 노균병 주의, 환기 필수",
+            "sunlight": "충분한 일조",
+            "sunlight_note": "햇빛이 잘 들어야 덩굴 튼튼, 열매 잘 맺힘",
+            "soil_temperature": "18°C 이상",
+            "soil_temperature_note": "정식 적정 지온: 18°C 이상"
+        },
+        "감자": {
+            "temperature": "15~20°C",
+            "temperature_note": "생육 최적 온도: 15~20°C",
+            "humidity": "적당한 수분",
+            "humidity_note": "과습 시 역병 발생, 배수 중요",
+            "sunlight": "충분한 일조",
+            "sunlight_note": "햇빛이 잘 드는 곳에서 감자가 잘 여뭅니다",
+            "soil_temperature": "5~10°C",
+            "soil_temperature_note": "파종 적정 지온: 5~10°C (3월 중하순)"
+        },
+        "상추": {
+            "temperature": "15~20°C",
+            "temperature_note": "생육 최적 온도: 15~20°C",
+            "humidity": "적당한 수분",
+            "humidity_note": "흙이 마르면 물 주기",
+            "sunlight": "양지 또는 반양지",
+            "sunlight_note": "햇빛을 크게 가리지 않음",
+            "soil_temperature": "10~15°C",
+            "soil_temperature_note": "파종 적정 지온: 10~15°C (3월 말~4월)"
+        },
+        "부추": {
+            "temperature": "15~25°C",
+            "temperature_note": "생육 최적 온도: 15~25°C",
+            "humidity": "충분한 수분",
+            "humidity_note": "물을 좋아하는 작물, 건조 시 섬유질 증가",
+            "sunlight": "양지 또는 반양지",
+            "sunlight_note": "햇빛을 잘 가리지 않음",
+            "soil_temperature": "10°C 이상",
+            "soil_temperature_note": "파종 적정 지온: 10°C 이상 (3월 하순~4월 중순)"
+        }
+    }
+    
+    return env_data.get(crop_name, {
+        "temperature": "정보 없음",
+        "temperature_note": "해당 작물의 온도 정보가 없습니다",
+        "humidity": "정보 없음",
+        "humidity_note": "해당 작물의 습도 정보가 없습니다",
+        "sunlight": "정보 없음",
+        "sunlight_note": "해당 작물의 일조량 정보가 없습니다",
+        "soil_temperature": "정보 없음",
+        "soil_temperature_note": "해당 작물의 토양 온도 정보가 없습니다"
+    })
+
+
+@app.get("/crops/{crop_name}")
+def get_crop_detail(crop_name: str):
+    """작물 상세 정보 조회 (환경 정보 포함)"""
+    crops = recommendation_service._crops
+    crop = next((c for c in crops if c["name"] == crop_name), None)
+    
+    if not crop:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"작물 '{crop_name}'을 찾을 수 없습니다.")
+    
+    # 환경 정보 추가
+    env_data = get_crop_environment_data(crop_name)
+    
+    # 재배 기간 정보 추가
+    growing_period = get_growing_period(crop_name)
+    
+    # 물주기 정보는 crop_info.txt에서 가져올 수 있지만, 여기서는 간단히 환경 정보만 반환
+    result = {
+        **crop,
+        "environment_data": env_data,
+        "watering": "작물별 물주기 정보는 상세 페이지에서 확인하세요.",
+        "growing_period": growing_period  # 재배 기간 (일수)
+    }
+    
+    return result
+
+
+# =========================================================
 # 10. 게임 관련 API
 # =========================================================
 
@@ -507,12 +642,22 @@ class PestCheckResponse(BaseModel):
 
 @app.post("/game/check-pest", response_model=PestCheckResponse)
 def check_pest_occurrence(req: PestCheckRequest):
-    """날짜 진행 시 병해충 발생 여부를 확률 기반으로 체크"""
+    """날짜 진행 시 병해충 발생 여부를 체크 (sickness.txt 기반)"""
     import random
     
     try:
-        # 기본 병해충 발생 확률 (5%)
-        base_probability = 0.05
+        # 작물별 병해충 정보 가져오기
+        sickness_info = get_sickness_info(req.cropName)
+        
+        # 기본 병해충 발생 확률
+        base_probability = 0.05 + (req.day * 0.005)  # 날짜가 길수록 증가
+        base_probability = min(0.3, base_probability)
+        
+        # HP가 낮을수록 확률 증가
+        if req.currentHp < 50:
+            base_probability *= 2.0
+        elif req.currentHp < 70:
+            base_probability *= 1.5
         
         # 관리 상태 평가 (최근 3일간의 행동)
         recent_actions = [a for a in req.actions if a.get("day", 0) >= req.day - 3]
@@ -529,56 +674,71 @@ def check_pest_occurrence(req: PestCheckRequest):
         if pesticide_count > 0:
             management_score += 1
         
-        # 관리가 잘 되었으면 확률 감소, 못했으면 증가
         if management_score >= 2:
-            # 잘 관리됨: 확률 50% 감소
             base_probability *= 0.5
         elif management_score == 0:
-            # 관리 안됨: 확률 200% 증가
             base_probability *= 3.0
         elif management_score == 1:
-            # 부분 관리: 확률 50% 증가
             base_probability *= 1.5
         
-        # 기상 조건에 따른 확률 조정
-        weather_multiplier = 1.0
-        pest_type = None
+        # 날씨 기반 온도/습도 추정
+        estimated_temp = 20
+        estimated_humidity = 60
         
+        weather_multiplier = 1.0
         if req.currentWeather:
             if req.currentWeather in ["비", "천둥"]:
-                # 습도 관련 병해충 확률 증가 (흰가루병, 역병 등)
+                estimated_humidity = 85
                 weather_multiplier = 2.0
-                pest_type = random.choice(["흰가루병", "역병", "노균병"])
-            elif req.currentWeather == "맑음" and random.random() < 0.3:
-                # 건조 관련 병해충 (진딧물, 응애 등)
-                weather_multiplier = 1.5
-                pest_type = random.choice(["진딧물", "응애", "총채벌레"])
+            elif req.currentWeather == "맑음":
+                estimated_humidity = 50
             elif req.currentWeather == "흐림":
-                # 습도가 높은 경우
+                estimated_humidity = 75
                 weather_multiplier = 1.3
-                pest_type = random.choice(["흰가루병", "잎마름병"])
+        
+        # sickness.txt에서 조건에 맞는 병해충 찾기
+        possible_pests = []
+        for sickness in sickness_info:
+            desc = sickness.get("description", "")
+            name = sickness.get("name", "")
+            
+            # 온도 조건 확인
+            temp_range = extract_temperature_from_text(desc)
+            if temp_range:
+                temp_min, temp_max = temp_range
+                if not (temp_min <= estimated_temp <= temp_max):
+                    continue
+            
+            # 습도 조건 확인
+            humidity_range = extract_humidity_from_text(desc)
+            if humidity_range:
+                hum_min, hum_max = humidity_range
+                if not (hum_min <= estimated_humidity <= hum_max):
+                    continue
+            
+            # 조건에 맞는 병해충 추가
+            possible_pests.append(name)
+        
+        # 가능한 병해충이 없으면 기본 병해충 사용
+        if not possible_pests:
+            possible_pests = ["진딧물", "응애", "흰가루병", "역병", "노균병"]
         
         # 최종 확률 계산
-        final_probability = min(0.5, base_probability * weather_multiplier)  # 최대 50%
+        final_probability = min(0.5, base_probability * weather_multiplier)
         
         # 병해충 발생 여부 결정
         pest_occurred = random.random() < final_probability
         
         if pest_occurred:
-            # 병해충 종류 결정
-            if not pest_type:
-                pest_type = random.choice([
-                    "진딧물", "응애", "배추흰나비 애벌레", "좀나방 애벌레",
-                    "흰가루병", "역병", "노균병", "탄저병", "잎마름병"
-                ])
+            pest_type = random.choice(possible_pests)
             
-            # HP 감소량 결정 (관리 상태에 따라)
+            # HP 감소량 결정
             if management_score >= 2:
-                hp_loss = random.randint(3, 5)  # 잘 관리됨: 적은 피해
+                hp_loss = random.randint(3, 5)
             elif management_score == 1:
-                hp_loss = random.randint(5, 8)  # 부분 관리: 중간 피해
+                hp_loss = random.randint(5, 8)
             else:
-                hp_loss = random.randint(8, 15)  # 관리 안됨: 큰 피해
+                hp_loss = random.randint(8, 15)
             
             feedback = f"⚠️ {pest_type}이(가) 발생했습니다! ({hp_loss} HP 감소)"
             
@@ -606,23 +766,98 @@ def check_pest_occurrence(req: PestCheckRequest):
 
 @app.post("/game/evaluate", response_model=GameEvaluateResponse)
 def evaluate_game_action(req: GameActionRequest):
-    """작물 관리 행동을 평가하고 HP를 계산"""
+    """작물 관리 행동을 평가하고 HP를 계산 (txt 파일 데이터 기반)"""
     try:
-        # 날씨 조건 체크: 습한 날씨(비, 눈)에 물을 주면 과습으로 판단
-        weather_penalty = 0
-        weather_feedback = ""
+        hp_change = 0
+        feedback_parts = []
         
+        # 1. 날씨 조건 체크: 습한 날씨(비, 눈)에 물을 주면 과습으로 판단
+        weather_penalty_applied = False
         if req.actionType == "water" and req.currentWeather:
-            # 습한 날씨에 물을 주는 경우
             if req.currentWeather in ["비", "눈", "천둥"]:
-                weather_penalty = -8  # 과습으로 인한 HP 감소
-                weather_feedback = f"⚠️ {req.currentWeather} 날씨에 물을 주면 과습이 될 수 있어요! 뿌리가 썩을 수 있습니다. (-8)"
+                hp_change -= 8
+                feedback_parts.append(f"⚠️ {req.currentWeather} 날씨에 물을 주면 과습이 될 수 있어요! 뿌리가 썩을 수 있습니다. (-8)")
+                weather_penalty_applied = True
             elif req.currentWeather == "흐림":
-                # 흐린 날씨에도 약간의 페널티
-                weather_penalty = -3
-                weather_feedback = f"흐린 날씨에 물을 주는 것은 조금 위험할 수 있어요. (-3)"
+                hp_change -= 3
+                feedback_parts.append(f"흐린 날씨에 물을 주는 것은 조금 위험할 수 있어요. (-3)")
+                weather_penalty_applied = True
         
-        # 작물 가이드라인 가져오기
+        # 2. 물주기 빈도 체크 (watering.txt 기반)
+        # 날씨 페널티가 적용된 경우에는 빈도 체크를 건너뛰거나 조정
+        if req.actionType == "water" and not weather_penalty_applied:
+            watering_freq = get_watering_frequency(req.cropName, req.day)
+            if watering_freq:
+                # 해당 날짜의 물주기 빈도 확인
+                # 전날 행동에서 물주기 횟수 확인
+                today_actions = [a for a in req.actions if a.get("day") == req.day and a.get("type") == "water"]
+                water_count_today = len(today_actions)
+                
+                # 날씨가 맑은 경우에만 정상 평가
+                if req.currentWeather == "맑음" or not req.currentWeather:
+                    # 빈도 파싱: "매일", "주 2~3회", "2~3일마다" 등
+                    if "매일" in watering_freq or "겉흙 마르면" in watering_freq:
+                        # 매일 물을 주는 것이 정상
+                        if water_count_today == 1:
+                            hp_change += 3
+                            feedback_parts.append("적절한 물주기입니다! (+3)")
+                        elif water_count_today > 1:
+                            hp_change -= 5
+                            feedback_parts.append("하루에 여러 번 물을 주면 과습이 될 수 있어요! (-5)")
+                    elif "주 2~3회" in watering_freq:
+                        # 주 2~3회면 3~4일마다 한 번
+                        if water_count_today == 1:
+                            hp_change += 2
+                            feedback_parts.append("적절한 물주기입니다! (+2)")
+                        elif water_count_today > 1:
+                            hp_change -= 4
+                            feedback_parts.append("물을 너무 자주 주셨어요. (-4)")
+                    elif "주 1~2회" in watering_freq or "주 1회" in watering_freq:
+                        # 주 1~2회면 3~7일마다 한 번
+                        if water_count_today == 1:
+                            hp_change += 2
+                            feedback_parts.append("적절한 물주기입니다! (+2)")
+                        elif water_count_today > 1:
+                            hp_change -= 4
+                            feedback_parts.append("물을 너무 자주 주셨어요. (-4)")
+                    elif "2~3일마다" in watering_freq:
+                        # 2~3일마다
+                        if water_count_today == 1:
+                            hp_change += 2
+                            feedback_parts.append("적절한 물주기입니다! (+2)")
+                        elif water_count_today > 1:
+                            hp_change -= 4
+                            feedback_parts.append("물을 너무 자주 주셨어요. (-4)")
+                # 날씨가 맑지 않은 경우 (흐림 등) - 이미 날씨 페널티가 적용되지 않았으므로 여기서는 평가하지 않음
+        
+        # 3. 비료 주기 체크 (fertilizing.txt 기반)
+        elif req.actionType == "fertilizer":
+            fertilizing_period = get_fertilizing_period(req.cropName)
+            if fertilizing_period:
+                # 비료 주기 정보에서 숫자 추출
+                period_match = re.search(r"(\d+)", fertilizing_period)
+                if period_match:
+                    expected_days = int(period_match.group(1))
+                    # 마지막 비료 준 날짜 확인
+                    last_fertilizer_days = [a.get("day") for a in req.actions if a.get("type") == "fertilizer"]
+                    if last_fertilizer_days:
+                        days_since_last = req.day - max(last_fertilizer_days)
+                        if days_since_last >= expected_days - 2:  # ±2일 여유
+                            hp_change += 4
+                            feedback_parts.append(f"적절한 시기에 비료를 주셨어요! (+4)")
+                        elif days_since_last < expected_days - 2:
+                            hp_change -= 3
+                            feedback_parts.append(f"비료를 너무 자주 주셨어요. {expected_days}일 간격이 적당합니다. (-3)")
+                    else:
+                        # 첫 비료
+                        if req.day >= expected_days - 2:
+                            hp_change += 4
+                            feedback_parts.append(f"적절한 시기에 비료를 주셨어요! (+4)")
+                        else:
+                            hp_change -= 2
+                            feedback_parts.append(f"비료 주기 시기가 이르네요. {expected_days}일 후가 적당합니다. (-2)")
+        
+        # 4. 기본 AI 판단 (기존 로직 유지)
         crop_guide = get_crop_guide_for_game(req.cropName)
         
         # 최근 행동 요약
@@ -639,8 +874,17 @@ def evaluate_game_action(req: GameActionRequest):
         weather_info = ""
         if req.currentWeather:
             weather_info = f"\n현재 날씨: {req.currentWeather}"
-            if req.actionType == "water" and req.currentWeather in ["비", "눈", "천둥"]:
-                weather_info += "\n⚠️ 주의: 습한 날씨에 물을 주면 과습이 될 수 있습니다."
+        
+        # 물주기/비료 정보 추가
+        data_info = ""
+        if req.actionType == "water":
+            watering_freq = get_watering_frequency(req.cropName, req.day)
+            if watering_freq:
+                data_info = f"\n권장 물주기 빈도: {watering_freq}"
+        elif req.actionType == "fertilizer":
+            fertilizing_period = get_fertilizing_period(req.cropName)
+            if fertilizing_period:
+                data_info = f"\n권장 비료 주기: {fertilizing_period}"
         
         # 행동 유형 한국어 변환
         action_kr = {
@@ -649,42 +893,32 @@ def evaluate_game_action(req: GameActionRequest):
             "pesticide": "농약살포"
         }.get(req.actionType, req.actionType)
         
-        # AI 판단
-        chain = game_prompt | llm
-        result = chain.invoke({
-            "crop_guide": crop_guide + weather_info,
-            "action_type": action_kr,
-            "day": req.day,
-            "current_hp": req.currentHp,
-            "recent_actions": recent_summary
-        })
+        # AI 판단 (txt 파일 기반 평가가 없을 때만)
+        if not feedback_parts:
+            chain = game_prompt | llm
+            result = chain.invoke({
+                "crop_guide": crop_guide + weather_info + data_info,
+                "action_type": action_kr,
+                "day": req.day,
+                "current_hp": req.currentHp,
+                "recent_actions": recent_summary
+            })
+            
+            # JSON 응답 파싱 시도
+            try:
+                response_text = result.content if hasattr(result, "content") else str(result)
+                json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
+                if json_match:
+                    eval_result = json.loads(json_match.group())
+                    hp_change = int(eval_result.get("hp_change", 0))
+                    feedback_parts.append(eval_result.get("feedback", "관리 중입니다."))
+                else:
+                    feedback_parts.append(response_text[:100] if response_text else "관리 중입니다.")
+            except:
+                feedback_parts.append("관리 중입니다.")
         
-        # JSON 응답 파싱 시도
-        import json
-        try:
-            # JSON 형식으로 응답이 오는 경우
-            response_text = result.content if hasattr(result, "content") else str(result)
-            # JSON 블록 찾기
-            json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
-            if json_match:
-                eval_result = json.loads(json_match.group())
-                hp_change = int(eval_result.get("hp_change", 0))
-                feedback = eval_result.get("feedback", "관리 중입니다.")
-            else:
-                # JSON이 아니면 기본값
-                hp_change = 0
-                feedback = response_text[:100] if response_text else "관리 중입니다."
-        except:
-            # 파싱 실패 시 기본값
-            hp_change = 0
-            feedback = "관리 중입니다."
-        
-        # 날씨 페널티 적용
-        if weather_penalty != 0:
-            hp_change += weather_penalty
-            # 날씨 피드백이 있으면 우선 표시
-            if weather_feedback:
-                feedback = weather_feedback
+        # 최종 피드백 조합
+        feedback = " ".join(feedback_parts) if feedback_parts else "관리 중입니다."
         
         # HP 계산
         new_hp = max(0, min(100, req.currentHp + hp_change))
@@ -731,12 +965,67 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
         previous_day_actions = [a for a in req.actions if a.get("day") == req.day]
         
         if not previous_day_actions:
-            # 전날 행동이 없으면 방치 페널티만 적용
-            return EvaluatePreviousDayResponse(
-                newHp=max(0, req.currentHp - 3),
-                totalHpChange=-3,
-                feedbacks=["방치로 인해 작물 건강도가 약간 감소했습니다... (-3)"]
-            )
+            # 전날 행동이 없을 때 날씨 확인
+            # 비/눈/천둥/흐린 날씨에는 물을 주지 않는 것이 정상이므로 방치 페널티 없음
+            if req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈", "천둥", "흐림"]:
+                return EvaluatePreviousDayResponse(
+                    newHp=req.currentHp,
+                    totalHpChange=0,
+                    feedbacks=[f"{req.weatherOnThatDay} 날씨에는 물을 주지 않는 것이 좋습니다. 방치 페널티 없음."]
+                )
+            
+            # 맑은 날이나 날씨 정보가 없을 때: watering.txt 기반으로 관수 시기 확인
+            watering_freq = get_watering_frequency(req.cropName, req.day)
+            if watering_freq:
+                # 마지막으로 물을 준 날짜 확인
+                water_actions = [a for a in req.actions if a.get("type") == "water" and a.get("day") < req.day]
+                days_since_last_water = req.day
+                if water_actions:
+                    last_water_day = max([a.get("day") for a in water_actions])
+                    days_since_last_water = req.day - last_water_day
+                else:
+                    # 물을 한 번도 주지 않았다면 현재 날짜가 마지막 날짜
+                    days_since_last_water = req.day
+                
+                # 권장 물주기 빈도에 따라 방치 여부 판단
+                should_water = False
+                if "매일" in watering_freq or "겉흙 마르면" in watering_freq:
+                    # 매일 물을 줘야 함
+                    should_water = (days_since_last_water >= 1)
+                elif "주 2~3회" in watering_freq:
+                    # 주 2~3회 = 3~4일마다 한 번
+                    should_water = (days_since_last_water >= 4)
+                elif "주 1~2회" in watering_freq or "주 1회" in watering_freq:
+                    # 주 1~2회 = 3~7일마다 한 번
+                    should_water = (days_since_last_water >= 7)
+                elif "2~3일마다" in watering_freq:
+                    # 2~3일마다
+                    should_water = (days_since_last_water >= 3)
+                elif "주2회" in watering_freq or "주 2회" in watering_freq:
+                    # 주 2회 = 3~4일마다 한 번
+                    should_water = (days_since_last_water >= 4)
+                
+                if should_water:
+                    # 물을 줘야 하는데 주지 않았으면 방치 페널티
+                    return EvaluatePreviousDayResponse(
+                        newHp=max(0, req.currentHp - 3),
+                        totalHpChange=-3,
+                        feedbacks=[f"권장 관수 시기({watering_freq})에 물을 주지 않아 건강도가 감소했습니다... (-3)"]
+                    )
+                else:
+                    # 아직 관수 시기가 아니면 방치 페널티 없음
+                    return EvaluatePreviousDayResponse(
+                        newHp=req.currentHp,
+                        totalHpChange=0,
+                        feedbacks=[f"권장 관수 시기({watering_freq})에 맞게 관리되고 있습니다."]
+                    )
+            else:
+                # watering.txt에 정보가 없으면 기본 방치 페널티 적용
+                return EvaluatePreviousDayResponse(
+                    newHp=max(0, req.currentHp - 3),
+                    totalHpChange=-3,
+                    feedbacks=["방치로 인해 작물 건강도가 약간 감소했습니다... (-3)"]
+                )
         
         total_hp_change = 0
         all_feedbacks = []
@@ -888,13 +1177,39 @@ def get_game_state(user_id: str):
 
 @app.get("/game/crop-guide/{crop_name}")
 def get_crop_guide(crop_name: str):
-    """작물 관리 가이드 가져오기"""
+    """작물 관리 가이드 가져오기 (물주기/비료 주기 정보 포함)"""
     try:
         guide_text = get_crop_guide_for_game(crop_name)
-        return {"guide": guide_text}
+        
+        # 물주기 정보 가져오기 (모든 구간)
+        watering_info = {}
+        # 각 구간의 물주기 정보를 가져오기 위해 임시로 day 값 사용
+        freq_0_10 = get_watering_frequency(crop_name, 5)  # 0~10일 구간
+        freq_10_35 = get_watering_frequency(crop_name, 20)  # 10~35일 구간
+        freq_35_plus = get_watering_frequency(crop_name, 50)  # 35일 이후
+        
+        if freq_0_10:
+            watering_info["0~10일"] = freq_0_10
+        if freq_10_35:
+            watering_info["10~35일"] = freq_10_35
+        if freq_35_plus:
+            watering_info["35+"] = freq_35_plus
+        
+        # 비료 주기 정보
+        fertilizing_period = get_fertilizing_period(crop_name)
+        
+        return {
+            "guide": guide_text,
+            "watering_info": watering_info,
+            "fertilizing_period": fertilizing_period
+        }
     except Exception as e:
         print(f"작물 가이드 가져오기 오류: {e}")
-        return {"guide": f"{crop_name} 작물의 가이드라인을 찾을 수 없습니다."}
+        return {
+            "guide": f"{crop_name} 작물의 가이드라인을 찾을 수 없습니다.",
+            "watering_info": {},
+            "fertilizing_period": None
+        }
 
 
 @app.get("/game/crops/{user_id}")
@@ -973,13 +1288,25 @@ class HarvestFeedbackResponse(BaseModel):
 
 @app.post("/game/harvest-feedback", response_model=HarvestFeedbackResponse)
 def get_harvest_feedback(req: HarvestFeedbackRequest):
-    """수확 전날 피드백 생성"""
+    """수확 전날 피드백 생성 (growing_period.txt 기반)"""
     try:
+        # 재배 기간 확인
+        growing_period = get_growing_period(req.cropName)
+        
         crop_guide = get_crop_guide_for_game(req.cropName)
+        
+        # 재배 기간 정보 추가
+        period_info = ""
+        if growing_period:
+            period_info = f"\n권장 재배 기간: {growing_period}일"
+            if req.totalDays < growing_period * 0.7:  # 70% 미만이면 너무 이른 수확
+                period_info += f"\n⚠️ 주의: 재배 기간이 권장 기간({growing_period}일)보다 짧습니다."
+            elif req.totalDays >= growing_period * 0.9:  # 90% 이상이면 적절
+                period_info += f"\n✅ 재배 기간이 적절합니다."
         
         chain = harvest_prompt | llm
         result = chain.invoke({
-            "crop_guide": crop_guide,
+            "crop_guide": crop_guide + period_info,
             "final_hp": req.finalHp,
             "total_days": req.totalDays,
             "action_count": len(req.actions)
@@ -995,7 +1322,12 @@ def get_harvest_feedback(req: HarvestFeedbackRequest):
         else:
             message = response_text[:200] if response_text else "수확하세요!"
         
+        # 재배 기간 체크 추가
         success = req.finalHp >= 70
+        if growing_period and req.totalDays < growing_period * 0.7:
+            # 너무 이른 수확은 성공으로 간주하지 않음
+            success = False
+            message += f" (재배 기간이 짧습니다. 권장: {growing_period}일)"
         
         return HarvestFeedbackResponse(
             message=message,
