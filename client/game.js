@@ -675,6 +675,25 @@ function showCropSpeechBubble(message, duration = 5000) {
   }, duration);
 }
 
+// 특정 날짜의 날씨 계산 (날짜 기반)
+function getWeatherForDay(day) {
+  const currentMonth = getCurrentMonth();
+  // 날짜를 기반으로 날씨 계산 (같은 날짜면 같은 날씨)
+  // 간단한 해시 함수를 사용하여 날짜별로 일관된 날씨 생성
+  const seed = day * 1000 + currentMonth;
+  const random = ((seed * 9301 + 49297) % 233280) / 233280;
+  
+  const weatherOptions = WEATHER_BY_MONTH[currentMonth] || WEATHER_BY_MONTH[12];
+  let cumulativeProbability = 0;
+  for (const option of weatherOptions) {
+    cumulativeProbability += option.probability;
+    if (random <= cumulativeProbability) {
+      return option.type;
+    }
+  }
+  return weatherOptions[weatherOptions.length - 1].type;
+}
+
 // 전날 행동들을 평가하는 함수
 async function evaluatePreviousDayActions(previousDay) {
   try {
@@ -683,18 +702,17 @@ async function evaluatePreviousDayActions(previousDay) {
     // 전날의 행동들 필터링
     const previousDayActions = gameState.actions.filter(a => a.day === previousDay);
     
-    if (previousDayActions.length === 0) {
-      // 전날 행동이 없으면 방치 페널티만 적용
-      gameState.hp = Math.max(0, gameState.hp - 3);
-      if (gameState.hp > 0) {
-        showFeedback("방치로 인해 작물 건강도가 약간 감소했습니다... (-3)", "bad");
-        showCropSpeechBubble("물과 비료를 제대로 주지 않아서 힘들어요...", 5000);
-      }
-      return;
+    // 전날의 날씨 정보 찾기
+    // 행동이 있으면 첫 번째 행동의 날씨 사용, 없으면 해당 날짜의 날씨 계산
+    let weatherOnThatDay = null;
+    if (previousDayActions.length > 0) {
+      weatherOnThatDay = previousDayActions[0]?.weather || null;
     }
     
-    // 전날의 날씨 정보 찾기 (첫 번째 행동의 날씨 사용)
-    const weatherOnThatDay = previousDayActions[0]?.weather || null;
+    // 행동이 없거나 날씨 정보가 없으면 날짜 기반으로 날씨 계산
+    if (!weatherOnThatDay) {
+      weatherOnThatDay = getWeatherForDay(previousDay);
+    }
     
     // 전날 행동들을 일괄 평가
     const response = await fetch(`${API_BASE}/game/evaluate-previous-day`, {
@@ -726,9 +744,12 @@ async function evaluatePreviousDayActions(previousDay) {
     gameState.currentImageState = null; // 실제 상태에 맞게 결정하도록
     updateCropImage();
     
-    // HP가 감소했을 때 말풍선으로 피드백 표시
-    if (hpChange < 0 && result.feedbacks && result.feedbacks.length > 0) {
-      // 피드백에서 핵심 메시지 추출
+    // 말풍선 대사 표시 (백엔드에서 제공한 말풍선 대사 사용)
+    if (result.speechBubble) {
+      // 백엔드에서 제공한 작물 캐릭터의 말풍선 대사 표시
+      showCropSpeechBubble(result.speechBubble, 7000);
+    } else if (hpChange < 0 && result.feedbacks && result.feedbacks.length > 0) {
+      // 말풍선 대사가 없으면 기존 로직 사용 (하위 호환성)
       const mainFeedback = result.feedbacks[0];
       
       // 관리 소홀 부분 파악
@@ -745,6 +766,9 @@ async function evaluatePreviousDayActions(previousDay) {
       }
       
       showCropSpeechBubble(managementIssue, 6000);
+    } else if (hpChange > 0 && result.feedbacks && result.feedbacks.length > 0) {
+      // HP가 증가했을 때도 말풍선 표시
+      showCropSpeechBubble("좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚", 5000);
     }
     
     // 피드백 표시 (여러 피드백이 있으면 모두 표시)

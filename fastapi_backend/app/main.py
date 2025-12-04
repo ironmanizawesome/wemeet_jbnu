@@ -567,36 +567,62 @@ def get_crop_detail(crop_name: str):
 
 # 게임 판단을 위한 시스템 프롬프트
 game_system_template = """
-당신은 농업 다마고치 게임의 판단 시스템입니다.
+당신은 {crop_name} 작물 캐릭터입니다. 사용자가 당신을 키우고 있어요!
 
 작물 가이드라인:
 {crop_guide}
 
-사용자가 수행한 행동:
+사용자가 방금 한 행동:
 - 행동 유형: {action_type}
 - 현재 재배 일수: {day}일
-- 현재 HP: {current_hp}/100
+- 현재 건강도: {current_hp}/100
 - 최근 행동 이력: {recent_actions}
 
-작물 가이드라인을 기준으로 사용자의 행동을 평가하세요.
+당신은 작물 캐릭터로서, 사용자의 행동에 대해 귀여운 말풍선 대사를 해주세요!
 
 규칙:
-1. 가이드라인에 맞는 행동이면 HP가 증가 (최대 +5)
+1. 가이드라인에 맞는 행동이면 HP가 증가 (기본 +3~+5, HP가 낮을수록 더 큰 회복)
 2. 가이드라인과 약간 다르면 HP 유지 또는 소폭 감소 (-1~-3)
 3. 가이드라인과 많이 다르면 HP 감소 (-5~-10)
 4. 과도한 행동(예: 하루에 여러 번 물주기)이면 HP 감소
 5. 작물에 맞지 않는 행동이면 HP 감소
+6. **중요**: 현재 HP가 낮을 때(50 이하) 좋은 행동을 하면 더 큰 회복을 주세요 (최대 +8까지 가능)
+7. **중요**: 현재 HP가 매우 낮을 때(30 이하) 좋은 행동을 하면 최대한 큰 회복을 주세요 (최대 +10까지 가능)
+
+말풍선 대사 작성 규칙:
+- 작물 캐릭터의 입장에서 직접 말하는 형식으로 작성
+- 귀여운 말투 사용 (예: "~해줘", "~했어요", "~면 좋겠어요")
+- 좋은 행동이면: 감사 표현 + 기쁨 표현
+- 나쁜 행동이면: 아쉬움 표현 + 어떻게 해줬으면 하는지 구체적인 조언
+- 중간이면: 격려 표현 + 개선 제안
+- 1-2문장으로 간결하게 (말풍선에 들어갈 수 있도록)
 
 응답 형식 (JSON):
 {{
-    "hp_change": 숫자 (-10 ~ +5),
-    "feedback": "한 문장 피드백 메시지 (친근하고 다마고치처럼)"
+    "hp_change": 숫자 (-10 ~ +10, HP가 낮을 때는 더 큰 회복 가능),
+    "feedback": "사용자에게 보여줄 평가 메시지 (간단하게)",
+    "speech_bubble": "작물 캐릭터가 말풍선으로 할 귀여운 대사 (1-2문장, 어떻게 해줬으면 하는지 포함)"
 }}
 
 예시:
-- 좋은 경우: "적절한 물주기! 작물이 건강해졌어요! (+3)"
-- 나쁜 경우: "물을 너무 많이 줬어요. 뿌리가 썩을 수 있어요! (-5)"
-- 중간: "괜찮아요. 조금 더 관심을 기울여보세요! (0)"
+- 좋은 경우: 
+  {{
+    "hp_change": 3,
+    "feedback": "적절한 물주기입니다! (+3)",
+    "speech_bubble": "물을 제때 주셔서 너무 좋아요! 이렇게 계속 잘 챙겨주시면 더 건강해질 거예요! 💚"
+  }}
+- 나쁜 경우:
+  {{
+    "hp_change": -5,
+    "feedback": "물을 너무 많이 주셨어요. (-5)",
+    "speech_bubble": "흠... 물을 너무 많이 주셔서 뿌리가 숨을 못 쉬고 있어요. 비 오는 날에는 물을 주지 말아주세요! 맑은 날에만 주시면 더 좋을 것 같아요 🌱"
+  }}
+- 중간:
+  {{
+    "hp_change": 0,
+    "feedback": "관리 중입니다. (0)",
+    "speech_bubble": "괜찮아요! 조금만 더 날씨를 보고 물을 주시면 더 건강해질 수 있을 거예요. 맑은 날에 물을 주시는 게 좋아요! ☀️"
+  }}
 """
 
 game_prompt = ChatPromptTemplate.from_messages([
@@ -649,9 +675,9 @@ def check_pest_occurrence(req: PestCheckRequest):
         # 작물별 병해충 정보 가져오기
         sickness_info = get_sickness_info(req.cropName)
         
-        # 기본 병해충 발생 확률
-        base_probability = 0.05 + (req.day * 0.005)  # 날짜가 길수록 증가
-        base_probability = min(0.3, base_probability)
+        # 기본 병해충 발생 확률 (절반으로 낮춤)
+        base_probability = (0.05 + (req.day * 0.005)) * 0.5  # 날짜가 길수록 증가하지만 기본 확률을 절반으로
+        base_probability = min(0.15, base_probability)  # 최대 확률도 절반으로 (0.3 -> 0.15)
         
         # HP가 낮을수록 확률 증가
         if req.currentHp < 50:
@@ -664,6 +690,16 @@ def check_pest_occurrence(req: PestCheckRequest):
         water_count = sum(1 for a in recent_actions if a.get("type") == "water")
         fertilizer_count = sum(1 for a in recent_actions if a.get("type") == "fertilizer")
         pesticide_count = sum(1 for a in recent_actions if a.get("type") == "pesticide")
+        
+        # 농약 살포 후 40일간 모든 병해충 방지 체크
+        pesticide_actions = [a for a in req.actions if a.get("type") == "pesticide"]
+        days_since_last_pesticide = None
+        pesticide_protection_active = False
+        if pesticide_actions:
+            last_pesticide_day = max([a.get("day", 0) for a in pesticide_actions])
+            days_since_last_pesticide = req.day - last_pesticide_day
+            if days_since_last_pesticide < 40:
+                pesticide_protection_active = True
         
         # 관리 상태에 따른 확률 조정
         management_score = 0
@@ -723,8 +759,16 @@ def check_pest_occurrence(req: PestCheckRequest):
         if not possible_pests:
             possible_pests = ["진딧물", "응애", "흰가루병", "역병", "노균병"]
         
+        # 농약 살포 후 40일 이내면 모든 병해충 발생 방지
+        if pesticide_protection_active:
+            return PestCheckResponse(
+                pestOccurred=False,
+                hpChange=0,
+                feedback=""
+            )
+        
         # 최종 확률 계산
-        final_probability = min(0.5, base_probability * weather_multiplier)
+        final_probability = min(0.15, base_probability * weather_multiplier)  # 최대 확률도 절반으로
         
         # 병해충 발생 여부 결정
         pest_occurred = random.random() < final_probability
@@ -879,7 +923,7 @@ def evaluate_game_action(req: GameActionRequest):
                             hp_change -= 2
                             feedback_parts.append(f"비료 주기 시기가 이르네요. {expected_days}일 후가 적당합니다. (-2)")
         
-        # 4. 기본 AI 판단 (기존 로직 유지)
+        # 4. LLM 기반 종합 판단 (주 판단 로직)
         crop_guide = get_crop_guide_for_game(req.cropName)
         
         # 최근 행동 요약
@@ -892,6 +936,76 @@ def evaluate_game_action(req: GameActionRequest):
         else:
             recent_summary = "첫 관리입니다."
         
+        # 연속 판단 추적: 최근 행동들의 실제 HP 변화를 계산하여 연속성 확인
+        consecutive_good = 0  # 연속으로 좋은 판단 횟수 (HP 증가)
+        consecutive_bad = 0   # 연속으로 나쁜 판단 횟수 (HP 감소)
+        
+        # 최근 행동들을 실제로 평가하여 HP 변화 추적
+        if req.previousActions and len(req.previousActions) > 0:
+            # 최근 5개 행동만 확인 (성능 고려)
+            recent_actions_to_check = req.previousActions[-5:] if len(req.previousActions) > 5 else req.previousActions
+            
+            # 각 행동을 평가하여 HP 변화 계산
+            simulated_hp = req.currentHp
+            recent_hp_changes = []
+            
+            for prev_action in reversed(recent_actions_to_check):
+                action_day = prev_action.get("day", 0)
+                action_type = prev_action.get("type", "")
+                action_weather = prev_action.get("weather", "")
+                
+                # 간단한 평가 (실제 evaluate_game_action 호출은 성능상 부담)
+                # 규칙 기반으로 빠르게 평가
+                estimated_hp_change = 0
+                
+                if action_type == "water":
+                    if action_weather in ["비", "눈", "천둥"]:
+                        estimated_hp_change = -8  # 나쁨
+                    elif action_weather == "흐림":
+                        estimated_hp_change = -3  # 약간 나쁨
+                    elif action_weather == "맑음":
+                        # 물주기 빈도 확인
+                        watering_freq = get_watering_frequency(req.cropName, action_day)
+                        if watering_freq:
+                            # 같은 날 물주기 횟수 확인
+                            same_day_actions = [a for a in req.actions if a.get("day") == action_day and a.get("type") == "water"]
+                            if len(same_day_actions) == 1:
+                                estimated_hp_change = 2  # 좋음
+                            elif len(same_day_actions) > 1:
+                                estimated_hp_change = -5  # 나쁨
+                        else:
+                            estimated_hp_change = 1  # 기본적으로 좋음
+                elif action_type == "fertilizer":
+                    # 비료는 기본적으로 좋은 행동
+                    estimated_hp_change = 2
+                elif action_type == "pesticide":
+                    # 농약은 기본적으로 좋은 행동
+                    estimated_hp_change = 1
+                
+                recent_hp_changes.insert(0, estimated_hp_change)
+                simulated_hp -= estimated_hp_change  # 역순으로 계산하므로 빼기
+            
+            # 연속성 계산 (최근부터 역순으로)
+            for hp_change_val in reversed(recent_hp_changes):
+                if hp_change_val > 0:
+                    consecutive_good += 1
+                    consecutive_bad = 0  # 좋은 판단이 나오면 나쁜 연속성 리셋
+                elif hp_change_val < 0:
+                    consecutive_bad += 1
+                    consecutive_good = 0  # 나쁜 판단이 나오면 좋은 연속성 리셋
+                else:
+                    # 중립(0)이면 연속성 리셋
+                    consecutive_good = 0
+                    consecutive_bad = 0
+                
+                # 최대 3번까지만 연속성 확인 (너무 오래 반영하지 않음)
+                if consecutive_good >= 3 or consecutive_bad >= 3:
+                    break
+        
+        # 오늘 행동 요약
+        today_actions = [a for a in req.actions if a.get("day") == req.day and a.get("type") == req.actionType]
+        today_action_count = len(today_actions)
+        
         # 날씨 정보를 가이드라인에 추가
         weather_info = ""
         if req.currentWeather:
@@ -899,14 +1013,21 @@ def evaluate_game_action(req: GameActionRequest):
         
         # 물주기/비료 정보 추가
         data_info = ""
+        rule_based_info = ""  # 규칙 기반 평가 결과를 LLM에게 참고용으로 제공
         if req.actionType == "water":
             watering_freq = get_watering_frequency(req.cropName, req.day)
             if watering_freq:
                 data_info = f"\n권장 물주기 빈도: {watering_freq}"
+            # 규칙 기반 평가 결과 요약
+            if feedback_parts:
+                rule_based_info = f"\n규칙 기반 평가 참고: {'; '.join(feedback_parts)}"
         elif req.actionType == "fertilizer":
             fertilizing_period = get_fertilizing_period(req.cropName)
             if fertilizing_period:
                 data_info = f"\n권장 비료 주기: {fertilizing_period}"
+            # 규칙 기반 평가 결과 요약
+            if feedback_parts:
+                rule_based_info = f"\n규칙 기반 평가 참고: {'; '.join(feedback_parts)}"
         
         # 행동 유형 한국어 변환
         action_kr = {
@@ -915,28 +1036,96 @@ def evaluate_game_action(req: GameActionRequest):
             "pesticide": "농약살포"
         }.get(req.actionType, req.actionType)
         
-        # AI 판단 (txt 파일 기반 평가가 없을 때만)
-        if not feedback_parts:
-            chain = game_prompt | llm
-            result = chain.invoke({
-                "crop_guide": crop_guide + weather_info + data_info,
-                "action_type": action_kr,
-                "day": req.day,
-                "current_hp": req.currentHp,
-                "recent_actions": recent_summary
-            })
-            
-            # JSON 응답 파싱 시도
-            try:
-                response_text = result.content if hasattr(result, "content") else str(result)
-                json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
-                if json_match:
-                    eval_result = json.loads(json_match.group())
-                    hp_change = int(eval_result.get("hp_change", 0))
-                    feedback_parts.append(eval_result.get("feedback", "관리 중입니다."))
+        # 연속성 정보를 LLM에게 제공
+        continuity_info = ""
+        if consecutive_good > 0:
+            continuity_info = f"\n⚠️ 중요: 최근 {consecutive_good}번 연속으로 좋은 관리가 이루어졌습니다. 이번 행동도 좋다면 보너스를 적용하세요 (HP 증가량을 1.5~2배로 증가)."
+        elif consecutive_bad > 0:
+            continuity_info = f"\n⚠️ 중요: 최근 {consecutive_bad}번 연속으로 부적절한 관리가 이루어졌습니다. 이번 행동도 부적절하다면 페널티를 강화하세요 (HP 감소량을 1.5~2배로 증가)."
+        
+        # LLM이 종합적으로 판단 (규칙 기반 평가 결과를 참고하되, 최종 판단은 LLM이 수행)
+        chain = game_prompt | llm
+        result = chain.invoke({
+            "crop_name": req.cropName,  # 작물 이름 추가
+            "crop_guide": crop_guide + weather_info + data_info + rule_based_info + continuity_info,
+            "action_type": action_kr,
+            "day": req.day,
+            "current_hp": req.currentHp,
+            "recent_actions": f"{recent_summary}\n오늘 {action_kr} 횟수: {today_action_count}회"
+        })
+        
+        # JSON 응답 파싱 시도
+        try:
+            response_text = result.content if hasattr(result, "content") else str(result)
+            json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
+            if json_match:
+                eval_result = json.loads(json_match.group())
+                # LLM 판단 결과를 우선 적용 (규칙 기반 평가가 있으면 참고하되 LLM 판단이 최종)
+                llm_hp_change = int(eval_result.get("hp_change", 0))
+                llm_feedback = eval_result.get("feedback", "관리 중입니다.")
+                llm_speech_bubble = eval_result.get("speech_bubble", None)  # 말풍선 대사
+                
+                # HP가 낮을 때 좋은 행동에 대한 추가 보너스
+                hp_recovery_bonus = 0
+                if llm_hp_change > 0:
+                    # HP가 낮을수록 회복 보너스 증가
+                    if req.currentHp <= 30:
+                        hp_recovery_bonus = 3  # 매우 낮을 때 큰 보너스
+                    elif req.currentHp <= 50:
+                        hp_recovery_bonus = 2  # 낮을 때 보너스
+                    elif req.currentHp <= 70:
+                        hp_recovery_bonus = 1  # 중간일 때 작은 보너스
+                    
+                    if hp_recovery_bonus > 0:
+                        llm_hp_change += hp_recovery_bonus
+                        if llm_speech_bubble:
+                            llm_speech_bubble = llm_speech_bubble.replace("감사해요", "정말 감사해요! 건강이 많이 좋아졌어요!")
+                
+                # 연속성에 따른 가중치 적용
+                if llm_hp_change > 0 and consecutive_good > 0:
+                    # 연속으로 좋은 판단 → 보너스 적용
+                    bonus_multiplier = 1.0 + (consecutive_good * 0.3)  # 연속 1번: 1.3배, 2번: 1.6배, 3번: 1.9배
+                    bonus_multiplier = min(2.0, bonus_multiplier)  # 최대 2배
+                    llm_hp_change = int(llm_hp_change * bonus_multiplier)
+                    if consecutive_good >= 2:
+                        llm_feedback += f" (연속 좋은 관리 보너스! +{int((bonus_multiplier - 1.0) * 100)}%)"
+                        if llm_speech_bubble:
+                            llm_speech_bubble += f" 연속으로 잘 챙겨주셔서 정말 기뻐요! 🎉"
+                elif llm_hp_change < 0 and consecutive_bad > 0:
+                    # 연속으로 나쁜 판단 → 페널티 강화
+                    penalty_multiplier = 1.0 + (consecutive_bad * 0.3)  # 연속 1번: 1.3배, 2번: 1.6배, 3번: 1.9배
+                    penalty_multiplier = min(2.0, penalty_multiplier)  # 최대 2배
+                    llm_hp_change = int(llm_hp_change * penalty_multiplier)
+                    if consecutive_bad >= 2:
+                        llm_feedback += f" (연속 부적절한 관리 페널티! {int((penalty_multiplier - 1.0) * 100)}% 추가 감소)"
+                        if llm_speech_bubble:
+                            llm_speech_bubble += f" 계속 이렇게 되면 힘들어요... 제발 날씨를 확인하고 관리해주세요! 😢"
+                
+                # 규칙 기반 평가가 있으면 LLM 판단과 조합 (LLM이 최종 판단)
+                if feedback_parts:
+                    # 규칙 기반 평가는 참고용으로만, LLM 판단이 최종
+                    feedback_parts = [llm_feedback]  # LLM 피드백을 우선
                 else:
+                    feedback_parts = [llm_feedback]
+                
+                # HP 변화는 LLM 판단 결과 사용 (연속성 가중치 적용됨)
+                hp_change = llm_hp_change
+                
+                # 말풍선 대사가 없으면 기본 메시지 생성
+                if not llm_speech_bubble:
+                    if hp_change > 0:
+                        llm_speech_bubble = f"좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚"
+                    elif hp_change < 0:
+                        llm_speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
+                    else:
+                        llm_speech_bubble = f"괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️"
+            else:
+                # JSON 파싱 실패 시 규칙 기반 평가 결과 사용
+                if not feedback_parts:
                     feedback_parts.append(response_text[:100] if response_text else "관리 중입니다.")
-            except:
+        except:
+            # LLM 호출 실패 시 규칙 기반 평가 결과 사용
+            if not feedback_parts:
                 feedback_parts.append("관리 중입니다.")
         
         # 최종 피드백 조합
@@ -945,10 +1134,21 @@ def evaluate_game_action(req: GameActionRequest):
         # HP 계산
         new_hp = max(0, min(100, req.currentHp + hp_change))
         
+        # 말풍선 대사 (LLM이 생성한 것이 있으면 사용, 없으면 기본값)
+        speech_bubble = llm_speech_bubble if 'llm_speech_bubble' in locals() else None
+        if not speech_bubble:
+            if hp_change > 0:
+                speech_bubble = f"좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚"
+            elif hp_change < 0:
+                speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
+            else:
+                speech_bubble = f"괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️"
+        
         return GameEvaluateResponse(
             newHp=new_hp,
             hpChange=hp_change,
-            feedback=feedback
+            feedback=feedback,
+            speechBubble=speech_bubble
         )
         
     except Exception as e:
@@ -957,7 +1157,8 @@ def evaluate_game_action(req: GameActionRequest):
         return GameEvaluateResponse(
             newHp=req.currentHp,
             hpChange=0,
-            feedback="관리 중입니다."
+            feedback="관리 중입니다.",
+            speechBubble="괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️"
         )
 
 
@@ -977,6 +1178,7 @@ class EvaluatePreviousDayResponse(BaseModel):
     newHp: int
     totalHpChange: int
     feedbacks: List[str]  # 각 행동에 대한 피드백들
+    speechBubble: Optional[str] = None  # 작물 캐릭터의 말풍선 대사 (종합)
 
 
 @app.post("/game/evaluate-previous-day", response_model=EvaluatePreviousDayResponse)
@@ -1031,6 +1233,14 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
                     # 주 2회 = 3~4일마다 한 번
                     should_water = (days_since_last_water >= 4)
                 
+                # 날씨가 흐림/비/눈/천둥이면 물을 주지 않는 것이 정상이므로 방치 페널티 없음
+                if should_water and req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈", "천둥", "흐림"]:
+                    return EvaluatePreviousDayResponse(
+                        newHp=req.currentHp,
+                        totalHpChange=0,
+                        feedbacks=[f"{req.weatherOnThatDay} 날씨에는 물을 주지 않는 것이 좋습니다. 방치 페널티 없음."]
+                    )
+                
                 if should_water:
                     # 물을 줘야 하는데 주지 않았으면 방치 페널티
                     return EvaluatePreviousDayResponse(
@@ -1046,6 +1256,13 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
                         feedbacks=[f"권장 관수 시기({watering_freq})에 맞게 관리되고 있습니다."]
                     )
             else:
+                # watering.txt에 정보가 없을 때도 날씨 확인
+                if req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈", "천둥", "흐림"]:
+                    return EvaluatePreviousDayResponse(
+                        newHp=req.currentHp,
+                        totalHpChange=0,
+                        feedbacks=[f"{req.weatherOnThatDay} 날씨에는 물을 주지 않는 것이 좋습니다. 방치 페널티 없음."]
+                    )
                 # watering.txt에 정보가 없으면 기본 방치 페널티 적용
                 return EvaluatePreviousDayResponse(
                     newHp=max(0, req.currentHp - 3),
@@ -1055,6 +1272,7 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
         
         total_hp_change = 0
         all_feedbacks = []
+        all_speech_bubbles = []  # 각 행동의 말풍선 대사 수집
         current_hp = req.currentHp
         
         # 각 행동을 개별적으로 평가
@@ -1085,6 +1303,10 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
             # 피드백 수집
             if eval_result.feedback:
                 all_feedbacks.append(eval_result.feedback)
+            
+            # 말풍선 대사 수집
+            if eval_result.speechBubble:
+                all_speech_bubbles.append(eval_result.speechBubble)
         
         # 비료 미제공 페널티 체크
         fertilizing_period = get_fertilizing_period(req.cropName)
@@ -1114,10 +1336,22 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
         # 최종 HP 계산
         final_hp = max(0, min(100, req.currentHp + total_hp_change))
         
+        # 종합 말풍선 대사 생성 (여러 행동이 있으면 가장 중요한 것 선택)
+        final_speech_bubble = None
+        if all_speech_bubbles:
+            # HP 변화가 가장 큰 행동의 말풍선 사용, 또는 마지막 말풍선 사용
+            final_speech_bubble = all_speech_bubbles[-1]  # 마지막 행동의 말풍선
+        elif total_hp_change < 0:
+            # HP가 감소했는데 말풍선이 없으면 기본 메시지
+            final_speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
+        elif total_hp_change > 0:
+            final_speech_bubble = f"좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚"
+        
         return EvaluatePreviousDayResponse(
             newHp=final_hp,
             totalHpChange=total_hp_change,
-            feedbacks=all_feedbacks
+            feedbacks=all_feedbacks,
+            speechBubble=final_speech_bubble
         )
         
     except Exception as e:
