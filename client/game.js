@@ -393,6 +393,12 @@ const exitButton = document.getElementById("exitButton");
 // 메뉴 관련 요소
 const menuButton = document.getElementById("menuButton");
 const menuDropdown = document.getElementById("menuDropdown");
+
+// 작물일기 관련 요소
+const diaryButton = document.getElementById("diaryButton");
+const diaryModal = document.getElementById("diaryModal");
+const diaryClose = document.getElementById("diaryClose");
+const diaryEntries = document.getElementById("diaryEntries");
 const characterManageMenuItem = document.getElementById("characterManageMenuItem");
 const logoutMenuItem = document.getElementById("logoutMenuItem");
 
@@ -453,6 +459,31 @@ async function initGame() {
     exitButton.addEventListener("click", (e) => {
       e.preventDefault();
       exitGame();
+    });
+  }
+
+  // 작물일기 버튼 이벤트 리스너
+  if (diaryButton) {
+    diaryButton.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await showDiary();
+    });
+  }
+
+  // 작물일기 닫기 버튼 이벤트 리스너
+  if (diaryClose) {
+    diaryClose.addEventListener("click", (e) => {
+      e.preventDefault();
+      hideDiary();
+    });
+  }
+
+  // 작물일기 모달 외부 클릭 시 닫기
+  if (diaryModal) {
+    diaryModal.addEventListener("click", (e) => {
+      if (e.target === diaryModal) {
+        hideDiary();
+      }
     });
   }
   
@@ -712,6 +743,9 @@ async function evaluatePreviousDayActions(previousDay) {
     // 행동이 없거나 날씨 정보가 없으면 날짜 기반으로 날씨 계산
     if (!weatherOnThatDay) {
       weatherOnThatDay = getWeatherForDay(previousDay);
+      console.log(`📅 전날(${previousDay}일) 날씨 계산됨: ${weatherOnThatDay} (행동에 날씨 정보 없음)`);
+    } else {
+      console.log(`📅 전날(${previousDay}일) 날씨 사용: ${weatherOnThatDay} (행동에서 가져옴)`);
     }
     
     // 전날 행동들을 일괄 평가
@@ -748,8 +782,8 @@ async function evaluatePreviousDayActions(previousDay) {
     if (result.speechBubble) {
       // 백엔드에서 제공한 작물 캐릭터의 말풍선 대사 표시
       showCropSpeechBubble(result.speechBubble, 7000);
-    } else if (hpChange < 0 && result.feedbacks && result.feedbacks.length > 0) {
-      // 말풍선 대사가 없으면 기존 로직 사용 (하위 호환성)
+    } else if (result.feedbacks && result.feedbacks.length > 0) {
+      // 말풍선 대사가 없으면 피드백 기반으로 말풍선 생성
       const mainFeedback = result.feedbacks[0];
       
       // 관리 소홀 부분 파악
@@ -760,15 +794,26 @@ async function evaluatePreviousDayActions(previousDay) {
         managementIssue = "비료를 너무 많이 주셨어요. 적당한 양을 주는 게 중요해요.";
       } else if (mainFeedback.includes("방치")) {
         managementIssue = "관리를 제대로 해주지 않아서 힘들어요. 물과 비료를 꾸준히 주세요.";
-      } else {
+      } else if (hpChange > 0) {
+        managementIssue = "좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚";
+      } else if (hpChange < 0) {
         // 피드백에서 핵심만 추출
         managementIssue = mainFeedback.replace(/\([^)]*\)/g, "").trim();
+      } else {
+        // HP 변화가 없을 때
+        managementIssue = "괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️";
       }
       
+      if (managementIssue) {
       showCropSpeechBubble(managementIssue, 6000);
-    } else if (hpChange > 0 && result.feedbacks && result.feedbacks.length > 0) {
-      // HP가 증가했을 때도 말풍선 표시
+      }
+    } else if (hpChange !== 0) {
+      // 피드백도 없고 말풍선도 없을 때 기본 메시지
+      if (hpChange > 0) {
       showCropSpeechBubble("좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚", 5000);
+      } else if (hpChange < 0) {
+        showCropSpeechBubble("조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱", 5000);
+      }
     }
     
     // 피드백 표시 (여러 피드백이 있으면 모두 표시)
@@ -1216,8 +1261,7 @@ async function performAction(actionType) {
       }
     }
 
-    // 즉시 평가하지 않고 행동만 기록
-    // 간단한 확인 메시지만 표시
+    // 즉시 평가하지 않고 행동만 기록 (다음날에 피드백)
     const actionNames = {
       "water": "물",
       "fertilizer": "비료",
@@ -1757,6 +1801,73 @@ function initAdminMode() {
   adminSetDayBtn.addEventListener("click", setDay);
   adminSetHpBtn.addEventListener("click", setHp);
   adminResetGame.addEventListener("click", resetGame);
+}
+
+// 작물일기 표시
+async function showDiary() {
+  if (!diaryModal || !diaryEntries) return;
+
+  diaryModal.classList.add("show");
+  
+  try {
+    const response = await fetch(`${API_BASE}/game/diary/${gameState.userId}/${encodeURIComponent(gameState.cropName)}`);
+    if (!response.ok) {
+      throw new Error("작물일기 조회 실패");
+    }
+
+    const data = await response.json();
+    const entries = data.entries || [];
+
+    if (entries.length === 0) {
+      diaryEntries.innerHTML = '<div class="diary-empty">아직 작물일기가 없어요. 작물을 관리하면 일기가 작성됩니다! 🌱</div>';
+      return;
+    }
+
+    // 일기 목록 생성 (최신순이므로 역순으로 표시)
+    diaryEntries.innerHTML = entries.reverse().map(entry => {
+      const hpChange = entry.hpChange || 0;
+      const hpClass = hpChange > 0 ? "positive" : hpChange < 0 ? "negative" : "neutral";
+      const hpText = hpChange > 0 ? `+${hpChange}` : hpChange < 0 ? `${hpChange}` : "0";
+      
+      // 날짜 포맷팅
+      let dateText = "";
+      if (entry.timestamp) {
+        try {
+          const date = new Date(entry.timestamp);
+          dateText = date.toLocaleDateString("ko-KR", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+          });
+        } catch (e) {
+          dateText = entry.timestamp;
+        }
+      }
+
+      return `
+        <div class="diary-entry">
+          <div class="diary-entry-header">
+            <span class="diary-entry-day">${entry.day}일차</span>
+            <span class="diary-entry-hp ${hpClass}">HP ${hpText}</span>
+          </div>
+          <div class="diary-entry-text">${entry.entry}</div>
+          ${dateText ? `<div class="diary-entry-date">${dateText}</div>` : ""}
+        </div>
+      `;
+    }).join("");
+  } catch (error) {
+    console.error("작물일기 조회 실패:", error);
+    diaryEntries.innerHTML = '<div class="diary-empty">작물일기를 불러오는 중 오류가 발생했습니다. 😢</div>';
+  }
+}
+
+// 작물일기 숨기기
+function hideDiary() {
+  if (diaryModal) {
+    diaryModal.classList.remove("show");
+  }
 }
 
 // 페이지 로드 시 초기화

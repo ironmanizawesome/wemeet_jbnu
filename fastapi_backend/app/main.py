@@ -4,6 +4,7 @@ import re
 import hashlib
 import json
 from typing import List, Optional
+from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,6 +72,7 @@ profiles_collection = db["profiles"]
 users_collection = db["users"]
 games_collection = db["games"]  # 게임 상태 저장
 chat_responses_collection = db["chat_responses"]  # 챗봇 응답 캐시
+crop_diary_collection = db["crop_diary"]  # 작물일기 저장
 
 # 초기 사용자 데이터 설정 (이미 있으면 건너뜀)
 if users_collection.count_documents({"username": "nongbi"}) == 0:
@@ -191,6 +193,7 @@ class GameEvaluateResponse(BaseModel):
     newHp: int
     hpChange: int
     feedback: str
+    speechBubble: Optional[str] = None  # 말풍선 대사 추가
 
 
 class GameStateRequest(BaseModel):
@@ -578,6 +581,13 @@ game_system_template = """
 - 현재 건강도: {current_hp}/100
 - 최근 행동 이력: {recent_actions}
 
+⚠️ 중요: 가이드라인에 포함된 "현재 날씨" 정보를 반드시 확인하세요! 날씨 정보는 행동 평가에 매우 중요합니다.
+- 맑은 날씨: 물주기에 적합
+- 비/눈/천둥 날씨: 물주기 시 과습 위험 (페널티)
+- 흐린 날씨: 물주기 시 주의 필요
+
+말풍선 대사 작성 시 날씨 정보를 언급할 때는 가이드라인에 명시된 "현재 날씨"를 정확히 사용하세요. 다른 날씨를 추측하거나 언급하지 마세요!
+
 당신은 작물 캐릭터로서, 사용자의 행동에 대해 귀여운 말풍선 대사를 해주세요!
 
 규칙:
@@ -595,7 +605,20 @@ game_system_template = """
 - 좋은 행동이면: 감사 표현 + 기쁨 표현
 - 나쁜 행동이면: 아쉬움 표현 + 어떻게 해줬으면 하는지 구체적인 조언
 - 중간이면: 격려 표현 + 개선 제안
+- **중요**: HP가 감소할 때는 구체적으로 무엇이 필요한지 명확히 전달하세요!
+  * 물이 필요하면: "저 너무 목말라요... 물을 주시면 좋을 것 같아요! 💧"
+  * 비료가 필요하면: "저 너무 배고파요... 비료를 주시면 더 잘 자랄 수 있을 거예요! 🌿"
+  * 과습이면: "물이 너무 많아서 힘들어요... 조금만 주시면 좋을 것 같아요! 😢"
+  * 방치되었으면: "관리가 필요해요... 물과 비료를 챙겨주시면 좋겠어요! 🌱"
 - 1-2문장으로 간결하게 (말풍선에 들어갈 수 있도록)
+
+⚠️ 문법 규칙 (반드시 지켜주세요!):
+- 날씨 단어(맑음, 비, 눈, 흐림)와 관리 행동(물, 비료, 농약)을 혼동하지 마세요!
+- "물"은 관수(물주기)를 의미합니다. "맑음"은 날씨입니다. 절대 섞지 마세요!
+- "비료"는 영양분을 주는 것입니다. "비"는 날씨입니다. 절대 섞지 마세요!
+- 올바른 예: "물을 주셔서", "비료를 주셔서", "맑은 날에", "비가 오는 날에"
+- 잘못된 예: "맑음료", "맑음을 주셔서" (이런 표현은 절대 사용하지 마세요!)
+- 비료 주기를 언급할 때: "비료를 X일 간격으로 주시면 좋겠어요"
 
 응답 형식 (JSON):
 {{
@@ -611,11 +634,24 @@ game_system_template = """
     "feedback": "적절한 물주기입니다! (+3)",
     "speech_bubble": "물을 제때 주셔서 너무 좋아요! 이렇게 계속 잘 챙겨주시면 더 건강해질 거예요! 💚"
   }}
-- 나쁜 경우:
+- 나쁜 경우 (과습 - 비/눈 날씨에 물을 준 경우):
   {{
     "hp_change": -5,
     "feedback": "물을 너무 많이 주셨어요. (-5)",
-    "speech_bubble": "흠... 물을 너무 많이 주셔서 뿌리가 숨을 못 쉬고 있어요. 비 오는 날에는 물을 주지 말아주세요! 맑은 날에만 주시면 더 좋을 것 같아요 🌱"
+    "speech_bubble": "흠... 물이 너무 많아서 뿌리가 숨을 못 쉬고 있어요. 비 오는 날에는 물을 주지 말아주세요! 맑은 날에만 주시면 더 좋을 것 같아요 🌱"
+  }}
+  ⚠️ 주의: 위 예시는 "비" 날씨에 물을 준 경우입니다. 실제 날씨가 "맑음"이면 "맑은 날에 물을 주시면 좋겠어요"라고 말해야 합니다!
+- 나쁜 경우 (물 부족):
+  {{
+    "hp_change": -5,
+    "feedback": "물을 주지 않아서 건강도가 감소했습니다. (-5)",
+    "speech_bubble": "저 너무 목말라요... 물을 주시면 더 건강해질 수 있을 거예요! 맑은 날에 물을 주시면 좋겠어요 💧"
+  }}
+- 나쁜 경우 (비료 부족):
+  {{
+    "hp_change": -3,
+    "feedback": "비료를 주지 않아서 건강도가 감소했습니다. (-3)",
+    "speech_bubble": "저 너무 배고파요... 비료를 주시면 더 잘 자랄 수 있을 거예요! 영양분이 필요해요 🌿"
   }}
 - 중간:
   {{
@@ -646,6 +682,7 @@ class GameEvaluateResponse(BaseModel):
     newHp: int
     hpChange: int
     feedback: str
+    speechBubble: Optional[str] = None  # 말풍선 대사 추가
 
 
 # 병해충 발생 체크를 위한 요청 모델
@@ -833,9 +870,14 @@ def evaluate_game_action(req: GameActionRequest):
             watering_freq = get_watering_frequency(req.cropName, req.day)
             if watering_freq:
                 # 해당 날짜의 물주기 빈도 확인
-                # 전날 행동에서 물주기 횟수 확인
+                # 현재 평가 중인 행동을 포함하여 오늘 물주기 횟수 확인
+                # 현재 행동이 이미 actions에 포함되어 있을 수 있으므로, 현재 행동을 제외하고 계산
                 today_actions = [a for a in req.actions if a.get("day") == req.day and a.get("type") == "water"]
+                # 현재 평가 중인 행동도 오늘의 행동이므로 +1
                 water_count_today = len(today_actions)
+                # 현재 행동이 이미 포함되어 있지 않으면 +1 (일반적으로는 포함되어 있음)
+                # 하지만 정확성을 위해 현재 행동 타임스탬프나 다른 식별자로 확인하는 것이 좋지만,
+                # 간단하게는 현재 행동이 오늘이고 물주기면 포함된 것으로 간주
                 
                 # 날씨가 맑은 경우에만 정상 평가
                 if req.currentWeather == "맑음" or not req.currentWeather:
@@ -894,7 +936,27 @@ def evaluate_game_action(req: GameActionRequest):
                         elif water_count_today > 1:
                             rule_based_hp_change -= 4
                             feedback_parts.append("물을 너무 자주 주셨어요. (-4)")
-                # 날씨가 맑지 않은 경우 (흐림 등) - 이미 날씨 페널티가 적용되지 않았으므로 여기서는 평가하지 않음
+                # 날씨가 맑지 않은 경우 (흐림 등) - 날씨 페널티가 없으면 기본적으로 좋은 행동으로 평가
+                if req.currentWeather == "흐림" and not weather_penalty_applied:
+                    # 흐린 날씨지만 페널티가 없으면 (비/눈이 아니면) 기본적으로 좋은 행동
+                    if water_count_today == 1:
+                        rule_based_hp_change += 2
+                        feedback_parts.append("흐린 날씨지만 적절한 물주기입니다! (+2)")
+                    elif water_count_today > 1:
+                        rule_based_hp_change -= 3
+                        feedback_parts.append("흐린 날씨에 물을 너무 많이 주면 위험할 수 있어요. (-3)")
+            else:
+                # watering.txt에 정보가 없을 때도 기본적으로 좋은 행동으로 평가
+                # 날씨가 맑거나 없으면 기본 보너스
+                if req.currentWeather == "맑음" or not req.currentWeather:
+                    today_actions = [a for a in req.actions if a.get("day") == req.day and a.get("type") == "water"]
+                    water_count_today = len(today_actions)
+                    if water_count_today == 1:
+                        rule_based_hp_change += 2
+                        feedback_parts.append("적절한 물주기입니다! (+2)")
+                    elif water_count_today > 1:
+                        rule_based_hp_change -= 3
+                        feedback_parts.append("하루에 여러 번 물을 주면 과습이 될 수 있어요! (-3)")
         
         # 3. 비료 주기 체크 (fertilizing.txt 기반)
         elif req.actionType == "fertilizer":
@@ -926,7 +988,7 @@ def evaluate_game_action(req: GameActionRequest):
         # 4. LLM 기반 종합 판단 (주 판단 로직)
         crop_guide = get_crop_guide_for_game(req.cropName)
         
-        # 최근 행동 요약
+        # 최근 행동 요약 및 분석
         recent_summary = ""
         if req.previousActions:
             water_count = sum(1 for a in req.previousActions if a.get("type") == "water")
@@ -935,6 +997,18 @@ def evaluate_game_action(req: GameActionRequest):
             recent_summary = f"최근 {len(req.previousActions)}일간 - 물주기: {water_count}회, 비료: {fert_count}회, 농약살포: {pest_count}회"
         else:
             recent_summary = "첫 관리입니다."
+        
+        # 최근 행동 분석 (HP 감소 시 구체적인 필요사항 판단을 위해)
+        recent_water_count = sum(1 for a in req.actions if a.get("type") == "water" and a.get("day") >= req.day - 3)
+        recent_fertilizer_count = sum(1 for a in req.actions if a.get("type") == "fertilizer" and a.get("day") >= req.day - 3)
+        days_since_last_water = req.day
+        days_since_last_fertilizer = req.day
+        water_actions = [a for a in req.actions if a.get("type") == "water"]
+        fertilizer_actions = [a for a in req.actions if a.get("type") == "fertilizer"]
+        if water_actions:
+            days_since_last_water = req.day - max([a.get("day") for a in water_actions])
+        if fertilizer_actions:
+            days_since_last_fertilizer = req.day - max([a.get("day") for a in fertilizer_actions])
         
         # 연속 판단 추적: 최근 행동들의 실제 HP 변화를 계산하여 연속성 확인
         consecutive_good = 0  # 연속으로 좋은 판단 횟수 (HP 증가)
@@ -1006,18 +1080,39 @@ def evaluate_game_action(req: GameActionRequest):
         today_actions = [a for a in req.actions if a.get("day") == req.day and a.get("type") == req.actionType]
         today_action_count = len(today_actions)
         
-        # 날씨 정보를 가이드라인에 추가
+        # 날씨 정보를 가이드라인에 추가 (명확하게 강조)
         weather_info = ""
         if req.currentWeather:
-            weather_info = f"\n현재 날씨: {req.currentWeather}"
+            weather_info = f"\n\n⚠️ 현재 날씨: {req.currentWeather} ⚠️\n이 날씨 정보는 행동 평가에 매우 중요합니다. 말풍선 대사에서 날씨를 언급할 때는 반드시 이 날씨({req.currentWeather})를 정확히 사용하세요. 다른 날씨를 추측하거나 언급하지 마세요!"
         
         # 물주기/비료 정보 추가
         data_info = ""
         rule_based_info = ""  # 규칙 기반 평가 결과를 LLM에게 참고용으로 제공
+        action_context = ""  # 최근 행동 분석 정보 (HP 감소 시 구체적인 필요사항 판단을 위해)
+        
         if req.actionType == "water":
             watering_freq = get_watering_frequency(req.cropName, req.day)
             if watering_freq:
                 data_info = f"\n권장 물주기 빈도: {watering_freq}"
+            
+            # 최근 물주기 정보
+            action_context = f"\n최근 물주기 정보: 최근 3일간 {recent_water_count}회 물을 주셨고, 마지막 물주기로부터 {days_since_last_water}일이 지났습니다."
+            if days_since_last_water >= 3:
+                action_context += " 물이 부족할 수 있습니다."
+            
+            # 규칙 기반 평가 결과 요약
+            if feedback_parts:
+                rule_based_info = f"\n규칙 기반 평가 참고: {'; '.join(feedback_parts)}"
+        elif req.actionType == "fertilizer":
+            fertilizing_period = get_fertilizing_period(req.cropName)
+            if fertilizing_period:
+                data_info = f"\n권장 비료 주기: {fertilizing_period}"
+            
+            # 최근 비료 정보
+            action_context = f"\n최근 비료 정보: 최근 3일간 {recent_fertilizer_count}회 비료를 주셨고, 마지막 비료로부터 {days_since_last_fertilizer}일이 지났습니다."
+            if days_since_last_fertilizer >= 20:
+                action_context += " 비료가 부족할 수 있습니다."
+            
             # 규칙 기반 평가 결과 요약
             if feedback_parts:
                 rule_based_info = f"\n규칙 기반 평가 참고: {'; '.join(feedback_parts)}"
@@ -1043,17 +1138,21 @@ def evaluate_game_action(req: GameActionRequest):
         elif consecutive_bad > 0:
             continuity_info = f"\n⚠️ 중요: 최근 {consecutive_bad}번 연속으로 부적절한 관리가 이루어졌습니다. 이번 행동도 부적절하다면 페널티를 강화하세요 (HP 감소량을 1.5~2배로 증가)."
         
-        # LLM 판단 초기화
-        llm_hp_change = 0
+        # LLM 판단 초기화 (None으로 초기화하여 LLM이 호출되지 않았음을 표시)
+        llm_hp_change = None
         llm_feedback = None
         llm_speech_bubble = None
         
         # LLM이 종합적으로 판단 (규칙 기반 평가 결과를 참고하되, 최종 판단은 LLM이 수행)
         try:
+            # 날씨 정보 디버깅
+            if req.currentWeather:
+                print(f"🌤️ 날씨 정보 전달: {req.currentWeather} (행동: {action_kr}, 날짜: {req.day})")
+            
             chain = game_prompt | llm
             result = chain.invoke({
                 "crop_name": req.cropName,  # 작물 이름 추가
-                "crop_guide": crop_guide + weather_info + data_info + rule_based_info + continuity_info,
+                "crop_guide": crop_guide + weather_info + data_info + action_context + rule_based_info + continuity_info,
                 "action_type": action_kr,
                 "day": req.day,
                 "current_hp": req.currentHp,
@@ -1064,11 +1163,37 @@ def evaluate_game_action(req: GameActionRequest):
             response_text = result.content if hasattr(result, "content") else str(result)
             json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
             if json_match:
-                eval_result = json.loads(json_match.group())
-                # LLM 판단 결과
-                llm_hp_change = int(eval_result.get("hp_change", 0))
-                llm_feedback = eval_result.get("feedback", "관리 중입니다.")
-                llm_speech_bubble = eval_result.get("speech_bubble", None)  # 말풍선 대사
+                try:
+                    eval_result = json.loads(json_match.group())
+                    # LLM 판단 결과
+                    llm_hp_change = int(eval_result.get("hp_change", 0))
+                    llm_feedback = eval_result.get("feedback", "관리 중입니다.")
+                    llm_speech_bubble = eval_result.get("speech_bubble", None)  # 말풍선 대사
+                    print(f"✅ LLM 응답 파싱 성공: hp_change={llm_hp_change}, feedback={llm_feedback[:50]}")
+                    # 날씨 정보 일치 확인 및 수정
+                    if req.currentWeather and llm_speech_bubble:
+                        # LLM이 잘못된 날씨를 언급했는지 확인
+                        weather_types = ["맑음", "비", "눈", "흐림", "천둥", "바람"]
+                        mentioned_weathers = [w for w in weather_types if w in llm_speech_bubble]
+                        if mentioned_weathers and req.currentWeather not in mentioned_weathers:
+                            print(f"⚠️ 경고: LLM이 잘못된 날씨를 언급했습니다! 실제 날씨: {req.currentWeather}, 언급된 날씨: {mentioned_weathers}")
+                            # 잘못된 날씨 언급을 실제 날씨로 수정
+                            for wrong_weather in mentioned_weathers:
+                                if wrong_weather != req.currentWeather:
+                                    llm_speech_bubble = llm_speech_bubble.replace(wrong_weather, req.currentWeather)
+                            print(f"✅ 날씨 정보 수정 완료: {llm_speech_bubble[:100]}")
+                except (json.JSONDecodeError, ValueError, KeyError) as e:
+                    print(f"❌ LLM JSON 파싱 오류: {e}, 응답: {response_text[:200]}")
+                    # 파싱 실패 시 규칙 기반 평가 사용을 위해 llm_hp_change를 None으로 설정
+                    llm_hp_change = None
+                    llm_feedback = None
+                    llm_speech_bubble = None
+            else:
+                print(f"❌ LLM JSON 패턴 매칭 실패, 응답: {response_text[:200]}")
+                # JSON 패턴을 찾지 못한 경우
+                llm_hp_change = None
+                llm_feedback = None
+                llm_speech_bubble = None
                 
                 # HP가 낮을 때 좋은 행동에 대한 추가 보너스
                 hp_recovery_bonus = 0
@@ -1107,7 +1232,10 @@ def evaluate_game_action(req: GameActionRequest):
                             llm_speech_bubble += f" 계속 이렇게 되면 힘들어요... 제발 날씨를 확인하고 관리해주세요! 😢"
         except Exception as e:
             # LLM 호출 실패 시 무시 (규칙 기반 평가 사용)
-            print(f"LLM 호출 오류: {e}")
+            print(f"❌ LLM 호출 오류: {e}")
+            llm_hp_change = None
+            llm_feedback = None
+            llm_speech_bubble = None
         
         # 피드백 설정
         if llm_feedback:
@@ -1117,42 +1245,78 @@ def evaluate_game_action(req: GameActionRequest):
         
         # HP 변화는 규칙 기반 평가와 LLM 판단을 조합
         # 규칙 기반 평가가 양수면 최소한 그 값은 보장하고, LLM이 더 높은 값을 주면 그것을 사용
-        if rule_based_hp_change > 0:
+        # LLM이 실패하거나 None이면 규칙 기반 평가를 사용
+        if llm_hp_change is None:
+            # LLM 파싱 실패 시 규칙 기반 평가 사용
+            hp_change = rule_based_hp_change
+            print(f"⚠️ LLM 파싱 실패, 규칙 기반 평가 사용: hp_change={hp_change}")
+        elif rule_based_hp_change > 0:
             # 규칙 기반 평가가 양수면, LLM 판단과 비교하여 더 큰 값을 사용
             # 단, LLM이 음수로 판단한 경우는 규칙 기반 평가를 우선
             if llm_hp_change < 0:
                 # LLM이 음수로 판단했지만 규칙 기반 평가가 양수면 규칙 기반 평가 사용
                 hp_change = rule_based_hp_change
+                print(f"⚠️ LLM이 음수 판단했지만 규칙 기반 평가가 양수, 규칙 기반 사용: hp_change={hp_change}")
             elif llm_hp_change == 0:
                 # LLM이 0을 반환했지만 규칙 기반 평가가 양수면 규칙 기반 평가 사용
                 hp_change = rule_based_hp_change
+                print(f"⚠️ LLM이 0 반환했지만 규칙 기반 평가가 양수, 규칙 기반 사용: hp_change={hp_change}")
             else:
                 # 둘 다 양수면 더 큰 값 사용 (LLM 판단에 보너스가 적용되어 있을 수 있음)
                 hp_change = max(rule_based_hp_change, llm_hp_change)
+                print(f"✅ 둘 다 양수, 더 큰 값 사용: hp_change={hp_change} (규칙: {rule_based_hp_change}, LLM: {llm_hp_change})")
         elif rule_based_hp_change < 0:
             # 규칙 기반 평가가 음수면 (페널티), LLM 판단과 비교하여 더 나쁜 값 사용
-            if llm_hp_change == 0:
+            if llm_hp_change == 0 or llm_hp_change is None:
                 hp_change = rule_based_hp_change
             else:
                 hp_change = min(rule_based_hp_change, llm_hp_change)
         else:
             # 규칙 기반 평가가 0이면 LLM 판단 사용
-            hp_change = llm_hp_change
+            # 하지만 물주기/비료주기 같은 경우 기본적으로 좋은 행동이므로 최소한 +1은 보장
+            if req.actionType in ["water", "fertilizer"] and llm_hp_change is None:
+                # LLM이 실패했고 규칙 기반 평가도 0이면, 기본적으로 좋은 행동으로 간주
+                # 날씨 페널티가 없고 하루에 한 번만 행동했다면 기본 보너스
+                today_actions = [a for a in req.actions if a.get("day") == req.day and a.get("type") == req.actionType]
+                if len(today_actions) == 1 and not weather_penalty_applied:
+                    hp_change = 1  # 기본 보너스
+                    print(f"✅ 규칙 기반 평가 0이고 LLM도 실패했지만, 적절한 행동으로 기본 보너스 +1")
+                else:
+                    hp_change = 0
+                    print(f"⚠️ 규칙 기반 평가 0이고 LLM도 실패, hp_change=0")
+            else:
+                hp_change = llm_hp_change if llm_hp_change is not None else 0
+                if llm_hp_change is None:
+                    print(f"⚠️ 규칙 기반 평가 0이고 LLM도 실패, hp_change=0")
         
-        # 말풍선 대사가 없으면 기본 메시지 생성
+        # 말풍선 대사가 없으면 기본 메시지 생성 (HP 감소 시 구체적인 피드백)
         if not llm_speech_bubble:
             if hp_change > 0:
                 llm_speech_bubble = f"좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚"
             elif hp_change < 0:
-                llm_speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
+                # HP 감소 시 구체적인 필요사항 전달
+                if req.actionType == "water" and weather_penalty_applied:
+                    llm_speech_bubble = f"물이 너무 많아서 힘들어요... 비 오는 날에는 물을 주지 말아주세요! 맑은 날에만 주시면 좋을 것 같아요 😢"
+                elif req.actionType == "water":
+                    # 물주기 관련 문제
+                    llm_speech_bubble = f"저 너무 목말라요... 적절한 시기에 물을 주시면 더 건강해질 수 있을 거예요! 💧"
+                elif req.actionType == "fertilizer":
+                    llm_speech_bubble = f"비료를 너무 많이 주셨어요... 적당한 양만 주시면 좋을 것 같아요! 🌿"
+                else:
+                    llm_speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
             else:
                 llm_speech_bubble = f"괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️"
         
         # 최종 피드백 조합
         feedback = " ".join(feedback_parts) if feedback_parts else "관리 중입니다."
         
+        # 디버깅: HP 변화 로그
+        print(f"🔍 HP 계산: currentHp={req.currentHp}, hp_change={hp_change}, rule_based={rule_based_hp_change}, llm={llm_hp_change}")
+        
         # HP 계산
         new_hp = max(0, min(100, req.currentHp + hp_change))
+        
+        print(f"✅ 최종 HP: {new_hp} (변화: {hp_change})")
         
         # 말풍선 대사 (LLM이 생성한 것이 있으면 사용, 없으면 기본값)
         speech_bubble = llm_speech_bubble if 'llm_speech_bubble' in locals() else None
@@ -1160,9 +1324,20 @@ def evaluate_game_action(req: GameActionRequest):
             if hp_change > 0:
                 speech_bubble = f"좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚"
             elif hp_change < 0:
-                speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
+                # HP 감소 시 구체적인 필요사항 전달
+                if req.actionType == "water" and weather_penalty_applied:
+                    speech_bubble = f"물이 너무 많아서 힘들어요... 비 오는 날에는 물을 주지 말아주세요! 맑은 날에만 주시면 좋을 것 같아요 😢"
+                elif req.actionType == "water":
+                    speech_bubble = f"저 너무 목말라요... 적절한 시기에 물을 주시면 더 건강해질 수 있을 거예요! 💧"
+                elif req.actionType == "fertilizer":
+                    speech_bubble = f"비료를 너무 많이 주셨어요... 적당한 양만 주시면 좋을 것 같아요! 🌿"
+                else:
+                    speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
             else:
                 speech_bubble = f"괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️"
+        
+        # 작물일기 저장은 다음날 평가 시에만 저장 (즉시 평가는 하지 않음)
+        # 즉시 평가는 제거되었으므로 여기서는 저장하지 않음
         
         return GameEvaluateResponse(
             newHp=new_hp,
@@ -1180,6 +1355,142 @@ def evaluate_game_action(req: GameActionRequest):
             feedback="관리 중입니다.",
             speechBubble="괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️"
         )
+
+
+# 한국어 조사 처리 함수
+def get_josa(word: str, josa_type: str) -> str:
+    """단어의 받침 유무에 따라 적절한 조사 반환
+    josa_type: 'i_ga' (이/가), 'eul_reul' (을/를), 'eun_neun' (은/는)
+    """
+    if not word:
+        return ""
+    
+    # 마지막 글자의 유니코드 값으로 받침 확인
+    last_char = word[-1]
+    if '가' <= last_char <= '힣':
+        # 한글인 경우
+        code = ord(last_char) - ord('가')
+        has_batchim = code % 28 != 0  # 받침이 있으면 True
+    else:
+        # 한글이 아닌 경우 (숫자, 영어 등)
+        has_batchim = False
+    
+    if josa_type == 'i_ga':
+        return '이' if has_batchim else '가'
+    elif josa_type == 'eul_reul':
+        return '을' if has_batchim else '를'
+    elif josa_type == 'eun_neun':
+        return '은' if has_batchim else '는'
+    return ""
+
+
+# 작물일기 관련 함수
+def convert_feedback_to_diary(crop_name: str, day: int, action_type: str, hp_change: int, 
+                               feedback: str, speech_bubble: Optional[str] = None, 
+                               weather: Optional[str] = None) -> Optional[str]:
+    """피드백을 작물일기 형식(1인칭 독백)으로 변환"""
+    try:
+        # 행동 타입 한국어 변환
+        action_kr = {
+            "water": "물",
+            "fertilizer": "비료",
+            "pesticide": "농약",
+            "daily_evaluation": "하루 평가",
+            "auto_water": "자연 관수"  # 비/눈으로 인한 자동 물주기
+        }.get(action_type, action_type)
+        
+        # 날씨 정보
+        weather_text = ""
+        weather_josa = ""
+        if weather:
+            weather_emoji = {
+                "맑음": "☀️",
+                "비": "🌧️",
+                "눈": "❄️",
+                "흐림": "☁️",
+                "천둥": "⛈️",
+                "바람": "💨"
+            }.get(weather, "")
+            weather_josa = get_josa(weather, 'i_ga')  # 비가, 눈이 등
+            weather_text = f" 오늘은 {weather}{weather_emoji} 날씨였어요."
+        
+        # speech_bubble이 있으면 그것을 기반으로 작성 (더 자연스러움)
+        if speech_bubble:
+            # speech_bubble을 1인칭 독백 형식으로 변환
+            # "~해주세요" 같은 표현을 "~해주셨으면 좋겠어요" 같은 독백 형식으로 변환
+            diary_text = speech_bubble
+            diary_text = diary_text.replace("주세요", "주셨으면 좋겠어요")
+            diary_text = diary_text.replace("주시면", "주셨으면")
+            diary_text = diary_text.replace("해주세요", "해주셨으면 좋겠어요")
+            diary_text = diary_text.replace("해주시면", "해주셨으면")
+            
+            # 날짜와 날씨 정보 추가
+            diary = f"{day}일차{weather_text}... {diary_text}"
+            return diary
+        
+        # speech_bubble이 없으면 피드백 기반으로 작성
+        # HP 변화에 따라 다른 톤으로 작성
+        # 행동에 대한 조사 계산
+        action_josa = get_josa(action_kr, 'eul_reul')  # 물을, 비료를 등
+        
+        if hp_change > 0:
+            # HP 증가 - 기쁨과 감사
+            if action_type == "auto_water":
+                # 자연 관수 (비/눈)
+                diary = f"{day}일차{weather_text} {weather}{weather_josa} 와서 자연스럽게 수분을 받았어요! 하늘에서 내려주는 물이라 더 시원하고 좋아요! 자연의 선물이에요 🌧️💚"
+            elif "물" in action_kr:
+                diary = f"{day}일차{weather_text} 오늘 {action_kr}{action_josa} 주셔서 정말 기뻐요! 건강이 많이 좋아진 것 같아요. 이렇게 계속 챙겨주시면 더 잘 자랄 수 있을 거예요 💚"
+            elif "비료" in action_kr:
+                diary = f"{day}일차{weather_text} 오늘 {action_kr}{action_josa} 주셔서 영양분을 충분히 받았어요! 이제 더 튼튼하게 자랄 수 있을 것 같아요 🌿"
+            else:
+                diary = f"{day}일차{weather_text} 오늘 {action_kr}{action_josa} 주셔서 안전하게 자랄 수 있어요! 감사해요 🛡️"
+        elif hp_change < 0:
+            # HP 감소 - 아픔과 기대
+            if "과습" in feedback or "너무 많이" in feedback:
+                diary = f"{day}일차{weather_text} 오늘 {action_kr}{action_josa} 너무 많이 주셔서 힘들어요. 뿌리가 숨을 쉬기 어려워요... 조금만 주시면 좋을 것 같아요 😢"
+            elif "물" in action_kr or "관수" in feedback or "목말라" in feedback:
+                diary = f"{day}일차{weather_text} 어제 물을 안 주셔서 너무 목말라요... 오늘은 물을 주시겠지? 기대하고 있을게요 💧"
+            elif "비료" in action_kr or "비료" in feedback:
+                diary = f"{day}일차{weather_text} 어제 비료를 안 주셔서 영양분이 부족해요... 배고파요... 오늘은 비료를 주시겠지? 🌿"
+            else:
+                diary = f"{day}일차{weather_text} 오늘 조금 힘들었어요. 하지만 내일은 더 나아질 거예요... 기대하고 있을게요 🌱"
+        else:
+            # HP 변화 없음 - 중립적
+            if action_type == "daily_evaluation":
+                diary = f"{day}일차{weather_text} 오늘 하루가 지났어요. 괜찮아요! 조금만 더 신경 써주시면 더 건강해질 수 있을 거예요 ☀️"
+            else:
+                diary = f"{day}일차{weather_text} 오늘 {action_kr}{action_josa} 주셨어요. 괜찮아요! 조금만 더 신경 써주시면 더 건강해질 수 있을 거예요 ☀️"
+        
+        return diary
+    except Exception as e:
+        print(f"작물일기 변환 오류: {e}")
+        return None
+
+
+# 작물일기 조회 요청 모델
+class CropDiaryRequest(BaseModel):
+    userId: str
+    cropName: str
+
+
+# 작물일기 응답 모델
+class CropDiaryResponse(BaseModel):
+    entries: List[dict]  # [{day: int, entry: str, hpChange: int, timestamp: str}, ...]
+
+
+@app.get("/game/diary/{user_id}/{crop_name}", response_model=CropDiaryResponse)
+def get_crop_diary(user_id: str, crop_name: str):
+    """작물일기 조회"""
+    try:
+        entries = list(crop_diary_collection.find(
+            {"userId": user_id, "cropName": crop_name},
+            {"_id": False}
+        ).sort("day", -1))  # 최신순 정렬
+        
+        return CropDiaryResponse(entries=entries)
+    except Exception as e:
+        print(f"작물일기 조회 오류: {e}")
+        return CropDiaryResponse(entries=[])
 
 
 # 전날 행동들을 일괄 평가하는 요청 모델
@@ -1205,17 +1516,52 @@ class EvaluatePreviousDayResponse(BaseModel):
 def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
     """전날의 행동들을 일괄 평가하고 HP 변화를 계산"""
     try:
+        # 디버깅: 받은 날씨 정보 출력
+        print(f"📅 전날 평가 시작 - 날짜: {req.day}, 전달받은 날씨: {req.weatherOnThatDay}")
+        
         # 전날의 행동들 필터링
         previous_day_actions = [a for a in req.actions if a.get("day") == req.day]
+        print(f"📋 전날 행동 수: {len(previous_day_actions)}, 행동들: {[a.get('type') for a in previous_day_actions]}")
         
         if not previous_day_actions:
             # 전날 행동이 없을 때 날씨 확인
-            # 비/눈/천둥/흐린 날씨에는 물을 주지 않는 것이 정상이므로 방치 페널티 없음
-            if req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈", "천둥", "흐림"]:
+            # 비/눈 날씨에는 자동으로 물을 준 것으로 처리 (HP 회복)
+            print(f"🌧️ 행동 없음 - 날씨 확인: {req.weatherOnThatDay}")
+            if req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈"]:
+                auto_water_hp = 2  # 자연 관수 효과
+                new_hp = min(100, req.currentHp + auto_water_hp)
+                print(f"✅ 자동 물주기 효과 적용: {req.weatherOnThatDay} 날씨로 HP +{auto_water_hp}")
+                
+                # 자동 물주기 효과를 작물일기에 기록
+                try:
+                    diary_entry = convert_feedback_to_diary(
+                        crop_name=req.cropName,
+                        day=req.day,
+                        action_type="auto_water",
+                        hp_change=auto_water_hp,
+                        feedback=f"어제 {req.weatherOnThatDay}{get_josa(req.weatherOnThatDay, 'i_ga')} 와서 자연스럽게 수분을 받았어요!",
+                        speech_bubble=f"어제 {req.weatherOnThatDay}{get_josa(req.weatherOnThatDay, 'i_ga')} 와서 촉촉해졌어요! 자연의 선물이에요! 🌧️💚",
+                        weather=req.weatherOnThatDay
+                    )
+                    if diary_entry:
+                        crop_diary_collection.insert_one({
+                            "userId": req.userId,
+                            "cropName": req.cropName,
+                            "day": req.day,
+                            "entry": diary_entry,
+                            "hpChange": auto_water_hp,
+                            "actionType": "auto_water",
+                            "weather": req.weatherOnThatDay,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                except Exception as e:
+                    print(f"자동 물주기 일기 저장 오류: {e}")
+                
                 return EvaluatePreviousDayResponse(
-                    newHp=req.currentHp,
-                    totalHpChange=0,
-                    feedbacks=[f"{req.weatherOnThatDay} 날씨에는 물을 주지 않는 것이 좋습니다. 방치 페널티 없음."]
+                    newHp=new_hp,
+                    totalHpChange=auto_water_hp,
+                    feedbacks=[f"어제 {req.weatherOnThatDay}{get_josa(req.weatherOnThatDay, 'i_ga')} 와서 자연스럽게 수분을 받았습니다! (+{auto_water_hp})"],
+                    speechBubble=f"어제 {req.weatherOnThatDay}{get_josa(req.weatherOnThatDay, 'i_ga')} 와서 촉촉해졌어요! 자연의 선물이에요! 🌧️💚"
                 )
             
             # 맑은 날이나 날씨 정보가 없을 때: watering.txt 기반으로 관수 시기 확인
@@ -1253,12 +1599,41 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
                     # 주 2회 = 3~4일마다 한 번
                     should_water = (days_since_last_water >= 4)
                 
-                # 날씨가 흐림/비/눈/천둥이면 물을 주지 않는 것이 정상이므로 방치 페널티 없음
-                if should_water and req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈", "천둥", "흐림"]:
+                # 날씨가 비/눈이면 자동으로 물을 준 것으로 처리 (HP 회복)
+                if should_water and req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈"]:
+                    auto_water_hp = 2  # 자연 관수 효과
+                    new_hp = min(100, req.currentHp + auto_water_hp)
+                    
+                    # 자동 물주기 효과를 작물일기에 기록
+                    try:
+                        diary_entry = convert_feedback_to_diary(
+                            crop_name=req.cropName,
+                            day=req.day,
+                            action_type="auto_water",
+                            hp_change=auto_water_hp,
+                            feedback=f"어제 {req.weatherOnThatDay}이(가) 와서 자연스럽게 수분을 받았어요!",
+                            speech_bubble=f"어제 {req.weatherOnThatDay}이(가) 와서 촉촉해졌어요! 자연의 선물이에요! 🌧️💚",
+                            weather=req.weatherOnThatDay
+                        )
+                        if diary_entry:
+                            crop_diary_collection.insert_one({
+                                "userId": req.userId,
+                                "cropName": req.cropName,
+                                "day": req.day,
+                                "entry": diary_entry,
+                                "hpChange": auto_water_hp,
+                                "actionType": "auto_water",
+                                "weather": req.weatherOnThatDay,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                    except Exception as e:
+                        print(f"자동 물주기 일기 저장 오류: {e}")
+                    
                     return EvaluatePreviousDayResponse(
-                        newHp=req.currentHp,
-                        totalHpChange=0,
-                        feedbacks=[f"{req.weatherOnThatDay} 날씨에는 물을 주지 않는 것이 좋습니다. 방치 페널티 없음."]
+                        newHp=new_hp,
+                        totalHpChange=auto_water_hp,
+                        feedbacks=[f"어제 {req.weatherOnThatDay}이(가) 와서 자연스럽게 수분을 받았습니다! (+{auto_water_hp})"],
+                        speechBubble=f"어제 {req.weatherOnThatDay}이(가) 와서 촉촉해졌어요! 자연의 선물이에요! 🌧️💚"
                     )
                 
                 if should_water:
@@ -1266,28 +1641,60 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
                     return EvaluatePreviousDayResponse(
                         newHp=max(0, req.currentHp - 3),
                         totalHpChange=-3,
-                        feedbacks=[f"권장 관수 시기({watering_freq})에 물을 주지 않아 건강도가 감소했습니다... (-3)"]
+                        feedbacks=[f"권장 관수 시기({watering_freq})에 물을 주지 않아 건강도가 감소했습니다... (-3)"],
+                        speechBubble="저 너무 목말라요... 물을 주시면 더 건강해질 수 있을 거예요! 맑은 날에 물을 주시면 좋겠어요 💧"
                     )
                 else:
                     # 아직 관수 시기가 아니면 방치 페널티 없음
                     return EvaluatePreviousDayResponse(
                         newHp=req.currentHp,
                         totalHpChange=0,
-                        feedbacks=[f"권장 관수 시기({watering_freq})에 맞게 관리되고 있습니다."]
+                        feedbacks=[f"권장 관수 시기({watering_freq})에 맞게 관리되고 있습니다."],
+                        speechBubble="괜찮아요! 적절한 시기에 물을 주시고 있어서 건강해요! 💚"
                     )
             else:
                 # watering.txt에 정보가 없을 때도 날씨 확인
-                if req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈", "천둥", "흐림"]:
+                if req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈"]:
+                    auto_water_hp = 2  # 자연 관수 효과
+                    new_hp = min(100, req.currentHp + auto_water_hp)
+                    
+                    # 자동 물주기 효과를 작물일기에 기록
+                    try:
+                        diary_entry = convert_feedback_to_diary(
+                            crop_name=req.cropName,
+                            day=req.day,
+                            action_type="auto_water",
+                            hp_change=auto_water_hp,
+                            feedback=f"어제 {req.weatherOnThatDay}이(가) 와서 자연스럽게 수분을 받았어요!",
+                            speech_bubble=f"어제 {req.weatherOnThatDay}이(가) 와서 촉촉해졌어요! 자연의 선물이에요! 🌧️💚",
+                            weather=req.weatherOnThatDay
+                        )
+                        if diary_entry:
+                            crop_diary_collection.insert_one({
+                                "userId": req.userId,
+                                "cropName": req.cropName,
+                                "day": req.day,
+                                "entry": diary_entry,
+                                "hpChange": auto_water_hp,
+                                "actionType": "auto_water",
+                                "weather": req.weatherOnThatDay,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                    except Exception as e:
+                        print(f"자동 물주기 일기 저장 오류: {e}")
+                    
                     return EvaluatePreviousDayResponse(
-                        newHp=req.currentHp,
-                        totalHpChange=0,
-                        feedbacks=[f"{req.weatherOnThatDay} 날씨에는 물을 주지 않는 것이 좋습니다. 방치 페널티 없음."]
+                        newHp=new_hp,
+                        totalHpChange=auto_water_hp,
+                        feedbacks=[f"어제 {req.weatherOnThatDay}이(가) 와서 자연스럽게 수분을 받았습니다! (+{auto_water_hp})"],
+                        speechBubble=f"어제 {req.weatherOnThatDay}이(가) 와서 촉촉해졌어요! 자연의 선물이에요! 🌧️💚"
                     )
                 # watering.txt에 정보가 없으면 기본 방치 페널티 적용
                 return EvaluatePreviousDayResponse(
                     newHp=max(0, req.currentHp - 3),
                     totalHpChange=-3,
-                    feedbacks=["방치로 인해 작물 건강도가 약간 감소했습니다... (-3)"]
+                    feedbacks=["방치로 인해 작물 건강도가 약간 감소했습니다... (-3)"],
+                    speechBubble="저 너무 목말라요... 물을 주시면 더 건강해질 수 있을 거예요! 관리가 필요해요 💧"
                 )
         
         total_hp_change = 0
@@ -1301,7 +1708,7 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
             # 각 행동의 날씨 정보 사용 (없으면 요청의 날씨 사용)
             action_weather = action.get("weather") or req.weatherOnThatDay
             
-            # 각 행동에 대해 평가 요청
+            # 각 행동에 대해 평가 요청 (행동 시점의 날씨 사용)
             eval_req = GameActionRequest(
                 userId=req.userId,
                 cropName=req.cropName,
@@ -1310,7 +1717,7 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
                 currentHp=current_hp,
                 actions=req.actions,
                 previousActions=req.previousActions,
-                currentWeather=action_weather
+                currentWeather=action_weather  # 행동 시점의 날씨 사용
             )
             
             # 평가 수행
@@ -1327,6 +1734,65 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
             # 말풍선 대사 수집
             if eval_result.speechBubble:
                 all_speech_bubbles.append(eval_result.speechBubble)
+            
+            # 각 행동에 대한 작물일기 저장 (행동 시점의 날씨 사용)
+            try:
+                diary_entry = convert_feedback_to_diary(
+                    crop_name=req.cropName,
+                    day=req.day,
+                    action_type=action_type,
+                    hp_change=eval_result.hpChange,
+                    feedback=eval_result.feedback,
+                    speech_bubble=eval_result.speechBubble,
+                    weather=action_weather  # 행동 시점의 날씨 사용
+                )
+                if diary_entry:
+                    crop_diary_collection.insert_one({
+                        "userId": req.userId,
+                        "cropName": req.cropName,
+                        "day": req.day,
+                        "entry": diary_entry,
+                        "hpChange": eval_result.hpChange,
+                        "actionType": action_type,
+                        "weather": action_weather,  # 행동 시점의 날씨 저장
+                        "timestamp": datetime.now().isoformat()
+                    })
+            except Exception as e:
+                print(f"작물일기 저장 오류 (행동별): {e}")
+        
+        # 비/눈 날씨에 물주기 행동이 없으면 자동 물주기 효과 적용
+        water_given_today = any(a.get("type") == "water" for a in previous_day_actions)
+        if not water_given_today and req.weatherOnThatDay and req.weatherOnThatDay in ["비", "눈"]:
+            auto_water_hp = 2  # 자연 관수 효과
+            total_hp_change += auto_water_hp
+            current_hp = min(100, current_hp + auto_water_hp)
+            all_feedbacks.append(f"어제 {req.weatherOnThatDay}{get_josa(req.weatherOnThatDay, 'i_ga')} 와서 자연스럽게 수분을 받았습니다! (+{auto_water_hp})")
+            all_speech_bubbles.append(f"어제 {req.weatherOnThatDay}{get_josa(req.weatherOnThatDay, 'i_ga')} 와서 촉촉해졌어요! 자연의 선물이에요! 🌧️💚")
+            
+            # 자동 물주기 효과를 작물일기에 기록
+            try:
+                diary_entry = convert_feedback_to_diary(
+                    crop_name=req.cropName,
+                    day=req.day,
+                    action_type="auto_water",
+                    hp_change=auto_water_hp,
+                    feedback=f"어제 {req.weatherOnThatDay}이(가) 와서 자연스럽게 수분을 받았어요!",
+                    speech_bubble=f"어제 {req.weatherOnThatDay}이(가) 와서 촉촉해졌어요! 자연의 선물이에요! 🌧️💚",
+                    weather=req.weatherOnThatDay
+                )
+                if diary_entry:
+                    crop_diary_collection.insert_one({
+                        "userId": req.userId,
+                        "cropName": req.cropName,
+                        "day": req.day,
+                        "entry": diary_entry,
+                        "hpChange": auto_water_hp,
+                        "actionType": "auto_water",
+                        "weather": req.weatherOnThatDay,
+                        "timestamp": datetime.now().isoformat()
+                    })
+            except Exception as e:
+                print(f"자동 물주기 일기 저장 오류: {e}")
         
         # 비료 미제공 페널티 체크
         fertilizing_period = get_fertilizing_period(req.cropName)
@@ -1352,6 +1818,9 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
                     total_hp_change += fertilizer_penalty
                     current_hp = max(0, min(100, current_hp + fertilizer_penalty))
                     all_feedbacks.append(f"비료를 주는 시기({expected_days}일 후)가 지났는데 비료를 주지 않아 건강도가 감소했습니다... (-2)")
+                    # 비료 부족 시 말풍선 추가
+                    if not all_speech_bubbles:
+                        all_speech_bubbles.append("저 너무 배고파요... 비료를 주시면 더 잘 자랄 수 있을 거예요! 영양분이 필요해요 🌿")
         
         # 최종 HP 계산
         final_hp = max(0, min(100, req.currentHp + total_hp_change))
@@ -1362,10 +1831,45 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
             # HP 변화가 가장 큰 행동의 말풍선 사용, 또는 마지막 말풍선 사용
             final_speech_bubble = all_speech_bubbles[-1]  # 마지막 행동의 말풍선
         elif total_hp_change < 0:
-            # HP가 감소했는데 말풍선이 없으면 기본 메시지
-            final_speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
+            # HP가 감소했는데 말풍선이 없으면 기본 메시지 (구체적인 필요사항 전달)
+            # 피드백을 기반으로 구체적인 필요사항 판단
+            needs_water = any("물" in f or "관수" in f or "목말라" in f for f in all_feedbacks)
+            needs_fertilizer = any("비료" in f for f in all_feedbacks)
+            
+            if needs_water:
+                final_speech_bubble = f"저 너무 목말라요... 물을 주시면 더 건강해질 수 있을 거예요! 맑은 날에 물을 주시면 좋겠어요 💧"
+            elif needs_fertilizer:
+                final_speech_bubble = f"저 너무 배고파요... 비료를 주시면 더 잘 자랄 수 있을 거예요! 영양분이 필요해요 🌿"
+            else:
+                final_speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
         elif total_hp_change > 0:
             final_speech_bubble = f"좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚"
+        
+        # 작물일기 저장 (전날 평가 결과)
+        try:
+            combined_feedback = " ".join(all_feedbacks) if all_feedbacks else "관리 중입니다."
+            diary_entry = convert_feedback_to_diary(
+                crop_name=req.cropName,
+                day=req.day,
+                action_type="daily_evaluation",  # 전날 평가
+                hp_change=total_hp_change,
+                feedback=combined_feedback,
+                speech_bubble=final_speech_bubble,
+                weather=req.weatherOnThatDay
+            )
+            if diary_entry:
+                crop_diary_collection.insert_one({
+                    "userId": req.userId,
+                    "cropName": req.cropName,
+                    "day": req.day,
+                    "entry": diary_entry,
+                    "hpChange": total_hp_change,
+                    "actionType": "daily_evaluation",
+                    "weather": req.weatherOnThatDay,
+                    "timestamp": datetime.now().isoformat()
+                })
+        except Exception as e:
+            print(f"작물일기 저장 오류 (전날 평가): {e}")
         
         return EvaluatePreviousDayResponse(
             newHp=final_hp,
