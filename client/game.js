@@ -20,6 +20,33 @@ const CROP_FOLDER_NAMES = {
   "부추": "chive"
 };
 
+// 작물별 이미지 상태 매핑 (파일명 차이 처리)
+const CROP_IMAGE_CONFIG = {
+  "감자": {
+    // 감자는 Lv2, Lv3에서 watering 사용
+    useWateringForLv2Lv3: true,
+    // 병해충 이미지 이름 (모든 레벨에서 sickness)
+    sicknessName: "sickness",
+    // 비료 애니메이션 사용 여부 (fertilizer2가 있는지)
+    hasFertilizer2: false
+  },
+  "토마토": {
+    // 토마토는 모든 레벨에서 water 사용
+    useWateringForLv2Lv3: false,
+    // 병해충 이미지 이름 (Lv1은 sickness, Lv2~4는 sick)
+    sicknessName: {
+      1: "sickness",
+      2: "sick",
+      3: "sick",
+      4: "sick"
+    },
+    // 비료 애니메이션 사용 여부 (fertilizer2가 있는지)
+    hasFertilizer2: true,
+    // fertilizer2 파일명 (토마토는 오타 fertilzer2)
+    fertilizer2Name: "fertilzer2"
+  }
+};
+
 // 작물별 재배 기간 캐시
 let cropGrowingPeriod = null;
 
@@ -87,13 +114,17 @@ function calculateLevelSync(day) {
 let wateringAnimationInterval = null;
 let wateringImageIndex = 0; // 0 또는 1 (water 또는 water2)
 
+// 비료주기 애니메이션 관련 변수
+let fertilizerAnimationInterval = null;
+let fertilizerImageIndex = 0; // 0 또는 1 (fertilizer 또는 fertilizer2)
+
 // 배경 이미지 애니메이션 관련 변수
 let backgroundAnimationInterval = null;
 let backgroundImageIndex = 0;
 
 // 날씨별 배경 이미지 매핑
 const BACKGROUND_IMAGES = {
-  // 맑음 배경 (바람, 안개 포함)
+  // 맑음 배경 (바람 포함)
   sunny: [
     "images/background/main_background.png"
   ],
@@ -111,6 +142,10 @@ const BACKGROUND_IMAGES = {
   rain: [
     "images/background/background_rain1.png",
     "images/background/background_rain2.png"
+  ],
+  // 안개 배경
+  foggy: [
+    "images/background/background_foggy.png"
   ]
 };
 
@@ -124,9 +159,10 @@ function getBackgroundTypeByWeather(weather) {
       return "rain";
     case "흐림":
       return "cloudy";
+    case "안개":
+      return "foggy";
     case "맑음":
     case "바람":
-    case "안개":
     default:
       return "sunny";
   }
@@ -191,7 +227,7 @@ function updateBackgroundForWeather() {
 }
 
 // 작물 이미지 경로 생성
-function getCropImagePath(state = null, useWater2 = false) {
+function getCropImagePath(state = null, useAlternate = false) {
   const cropFolder = CROP_FOLDER_NAMES[gameState.cropName];
   if (!cropFolder) {
     // 이미지가 없는 작물은 이모지 사용
@@ -199,6 +235,7 @@ function getCropImagePath(state = null, useWater2 = false) {
   }
   
   const level = calculateLevelSync(gameState.day || 0);
+  const cropConfig = CROP_IMAGE_CONFIG[gameState.cropName] || {};
   
   // 상태 우선순위: 명시적 상태(행동 중) > 병해충 > HP 기반 sad > 일반 상태
   let imageState;
@@ -207,37 +244,54 @@ function getCropImagePath(state = null, useWater2 = false) {
   if (state && (state === "watering" || state === "fertilizer" || state === "pesticide")) {
     // 물주기 상태 처리
     if (state === "watering") {
-      // 병해충이 있으면 물주기 이미지는 표시하지 않고 병해충 우선
-      // 하지만 물주기 애니메이션 중이므로 물주기 이미지 표시
       // HP가 70 미만이면 sad&water 또는 sad&water2 사용
       if (gameState.hp < 70) {
-        if (useWater2) {
+        if (useAlternate) {
           imageState = "sad&water2";
         } else {
           imageState = "sad&water";
         }
       } else {
         // 정상 상태에서 물주기
-        if (useWater2) {
+        if (useAlternate) {
           imageState = "water2";
         } else {
-          // 레벨에 따라 water 또는 watering 사용
-          // Lv1, Lv4는 water, Lv2, Lv3는 watering
-          if (level === 1 || level === 4) {
-            imageState = "water";
-          } else {
+          // 작물별 설정에 따라 water 또는 watering 사용
+          if (cropConfig.useWateringForLv2Lv3 && (level === 2 || level === 3)) {
             imageState = "watering";
+          } else {
+            imageState = "water";
           }
         }
       }
-    } else {
-      // 비료/농약은 그대로 사용
+    }
+    // 비료주기 상태 처리
+    else if (state === "fertilizer") {
+      if (useAlternate && cropConfig.hasFertilizer2) {
+        // 작물별 fertilizer2 파일명 사용 (오타 처리)
+        imageState = cropConfig.fertilizer2Name || "fertilizer2";
+      } else {
+        imageState = "fertilizer";
+      }
+    }
+    // 농약은 그대로 사용
+    else {
       imageState = state;
     }
   }
-  // 병해충이 있으면 sickness 우선 (행동 중이 아닐 때)
+  // 병해충이 있으면 sickness/sick 우선 (행동 중이 아닐 때)
   else if (gameState.hasPest) {
-    imageState = "sickness";
+    // 작물별 병해충 이미지 이름 결정
+    if (cropConfig.sicknessName) {
+      if (typeof cropConfig.sicknessName === "string") {
+        imageState = cropConfig.sicknessName;
+      } else {
+        // 레벨별로 다른 이름 사용
+        imageState = cropConfig.sicknessName[level] || "sickness";
+      }
+    } else {
+      imageState = "sickness";
+    }
   }
   // HP가 70 미만이면 sad 표시
   else if (gameState.hp < 70) {
@@ -280,8 +334,34 @@ function stopWateringAnimation() {
   }
 }
 
+// 비료주기 애니메이션 시작
+function startFertilizerAnimation() {
+  // 기존 애니메이션 정리
+  stopFertilizerAnimation();
+  
+  fertilizerImageIndex = 0;
+  
+  // 첫 번째 이미지 즉시 표시
+  updateCropImage("fertilizer", false);
+  
+  // 0.5초마다 이미지 번갈아가며 표시
+  fertilizerAnimationInterval = setInterval(() => {
+    fertilizerImageIndex = fertilizerImageIndex === 0 ? 1 : 0;
+    const useAlternate = fertilizerImageIndex === 1;
+    updateCropImage("fertilizer", useAlternate);
+  }, 500); // 0.5초 간격
+}
+
+// 비료주기 애니메이션 중지
+function stopFertilizerAnimation() {
+  if (fertilizerAnimationInterval) {
+    clearInterval(fertilizerAnimationInterval);
+    fertilizerAnimationInterval = null;
+  }
+}
+
 // 작물 이미지 업데이트
-function updateCropImage(state = null, useWater2 = false) {
+function updateCropImage(state = null, useAlternate = false) {
   const displayElement = document.getElementById("cropDisplay");
   if (!displayElement) {
     console.warn("cropDisplay 요소를 찾을 수 없습니다.");
@@ -289,9 +369,13 @@ function updateCropImage(state = null, useWater2 = false) {
   }
   
   // 물주기 상태가 아니고 애니메이션이 실행 중이 아니면 애니메이션 중지
-  // (애니메이션 중에는 물주기 상태로 유지)
   if (state !== "watering" && !wateringAnimationInterval) {
     stopWateringAnimation();
+  }
+  
+  // 비료주기 상태가 아니고 애니메이션이 실행 중이 아니면 애니메이션 중지
+  if (state !== "fertilizer" && !fertilizerAnimationInterval) {
+    stopFertilizerAnimation();
   }
   
   // state가 null이고 currentImageState도 null이면 실제 상태에 맞게 결정
@@ -300,7 +384,7 @@ function updateCropImage(state = null, useWater2 = false) {
     state = null; // getCropImagePath에서 자동으로 결정하도록
   }
   
-  const imagePath = getCropImagePath(state, useWater2);
+  const imagePath = getCropImagePath(state, useAlternate);
   
   if (imagePath) {
     // img 태그로 변경
@@ -665,6 +749,7 @@ window.addEventListener("beforeunload", () => {
     clearInterval(timeCheckInterval);
   }
   stopWateringAnimation();
+  stopFertilizerAnimation();
   stopBackgroundAnimation();
 });
 
@@ -1361,8 +1446,22 @@ async function performAction(actionType) {
           gameState.currentImageState = null;
           updateCropImage();
         }, 2000);
-      } else {
-        // 비료/농약은 일반 이미지 표시
+      } 
+      // 비료주기인 경우 애니메이션 시작
+      else if (actionType === "fertilizer") {
+        // 비료주기 애니메이션 시작
+        startFertilizerAnimation();
+        
+        // 2초 후 애니메이션 중지하고 원래 상태로 복귀
+        setTimeout(() => {
+          stopFertilizerAnimation();
+          // currentImageState를 null로 설정하여 실제 상태에 맞게 이미지 결정
+          gameState.currentImageState = null;
+          updateCropImage();
+        }, 2000);
+      }
+      // 농약은 일반 이미지 표시
+      else {
         updateCropImage(actionImageState);
         
         // 2초 후 원래 상태로 복귀
