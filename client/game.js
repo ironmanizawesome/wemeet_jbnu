@@ -252,77 +252,77 @@ const WEATHER_ICONS = {
 
 // 월별 가능한 기상 상황 및 확률 정의
 const WEATHER_BY_MONTH = {
-  1: [  // 1월 (겨울)
-    { type: "눈", probability: 0.4 },
-    { type: "맑음", probability: 0.3 },
-    { type: "흐림", probability: 0.2 },
-    { type: "비", probability: 0.1 }
+  1: [  // 1월 (겨울) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "눈", probability: 0.2 },
+    { type: "흐림", probability: 0.08 },
+    { type: "비", probability: 0.05 }
   ],
-  2: [  // 2월 (겨울)
-    { type: "눈", probability: 0.3 },
-    { type: "맑음", probability: 0.3 },
-    { type: "흐림", probability: 0.25 },
-    { type: "비", probability: 0.15 }
+  2: [  // 2월 (겨울) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "눈", probability: 0.15 },
+    { type: "흐림", probability: 0.12 },
+    { type: "비", probability: 0.06 }
   ],
-  3: [  // 3월 (봄)
-    { type: "비", probability: 0.35 },
-    { type: "맑음", probability: 0.3 },
-    { type: "흐림", probability: 0.25 },
-    { type: "바람", probability: 0.1 }
-  ],
-  4: [  // 4월 (봄)
-    { type: "비", probability: 0.3 },
-    { type: "맑음", probability: 0.35 },
-    { type: "흐림", probability: 0.25 },
-    { type: "바람", probability: 0.1 }
-  ],
-  5: [  // 5월 (봄)
-    { type: "맑음", probability: 0.4 },
-    { type: "비", probability: 0.25 },
-    { type: "흐림", probability: 0.25 },
-    { type: "바람", probability: 0.1 }
-  ],
-  6: [  // 6월 (여름 초)
-    { type: "맑음", probability: 0.35 },
-    { type: "비", probability: 0.3 },
-    { type: "흐림", probability: 0.25 },
-    { type: "천둥", probability: 0.1 }
-  ],
-  7: [  // 7월 (여름)
-    { type: "맑음", probability: 0.4 },
-    { type: "비", probability: 0.25 },
-    { type: "천둥", probability: 0.2 },
-    { type: "흐림", probability: 0.15 }
-  ],
-  8: [  // 8월 (여름)
-    { type: "맑음", probability: 0.4 },
-    { type: "천둥", probability: 0.25 },
+  3: [  // 3월 (봄) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
     { type: "비", probability: 0.2 },
-    { type: "흐림", probability: 0.15 }
+    { type: "흐림", probability: 0.1 },
+    { type: "바람", probability: 0.03 }
   ],
-  9: [  // 9월 (가을)
-    { type: "맑음", probability: 0.35 },
-    { type: "흐림", probability: 0.3 },
-    { type: "비", probability: 0.25 },
-    { type: "바람", probability: 0.1 }
+  4: [  // 4월 (봄) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "비", probability: 0.18 },
+    { type: "흐림", probability: 0.12 },
+    { type: "바람", probability: 0.03 }
   ],
-  10: [  // 10월 (가을)
-    { type: "맑음", probability: 0.35 },
-    { type: "흐림", probability: 0.3 },
-    { type: "비", probability: 0.25 },
-    { type: "바람", probability: 0.1 }
+  5: [  // 5월 (봄) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "비", probability: 0.15 },
+    { type: "흐림", probability: 0.15 },
+    { type: "바람", probability: 0.03 }
   ],
-  11: [  // 11월 (가을)
-    { type: "흐림", probability: 0.3 },
-    { type: "맑음", probability: 0.3 },
-    { type: "비", probability: 0.25 },
-    { type: "안개", probability: 0.15 }
+  6: [  // 6월 (여름 초) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "비", probability: 0.15 },
+    { type: "흐림", probability: 0.12 },
+    { type: "천둥", probability: 0.06 }
   ],
-  12: [  // 12월 (겨울)
-    { type: "눈", probability: 0.35 },
-    { type: "맑음", probability: 0.3 },
-    { type: "흐림", probability: 0.2 },
-    { type: "비", probability: 0.15 }
+  7: [  // 7월 (여름) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "비", probability: 0.12 },
+    { type: "천둥", probability: 0.12 },
+    { type: "흐림", probability: 0.09 }
+  ],
+  8: [  // 8월 (여름) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "천둥", probability: 0.15 },
+    { type: "비", probability: 0.12 },
+    { type: "흐림", probability: 0.06 }
+  ],
+  9: [  // 9월 (가을) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "흐림", probability: 0.18 },
+    { type: "비", probability: 0.12 },
+    { type: "바람", probability: 0.03 }
+  ],
+  10: [  // 10월 (가을) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "흐림", probability: 0.18 },
+    { type: "비", probability: 0.12 },
+    { type: "바람", probability: 0.03 }
+  ],
+  11: [  // 11월 (가을) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "흐림", probability: 0.18 },
+    { type: "비", probability: 0.12 },
+    { type: "안개", probability: 0.03 }
+  ],
+  12: [  // 12월 (겨울) - 습도 관련 날씨: 약 0.33
+    { type: "맑음", probability: 0.67 },
+    { type: "눈", probability: 0.18 },
+    { type: "흐림", probability: 0.1 },
+    { type: "비", probability: 0.05 }
   ]
 };
 

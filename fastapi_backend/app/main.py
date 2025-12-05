@@ -812,18 +812,18 @@ def check_pest_occurrence(req: PestCheckRequest):
 def evaluate_game_action(req: GameActionRequest):
     """작물 관리 행동을 평가하고 HP를 계산 (txt 파일 데이터 기반)"""
     try:
-        hp_change = 0
+        rule_based_hp_change = 0  # 규칙 기반 평가의 HP 변화를 별도로 저장
         feedback_parts = []
         
         # 1. 날씨 조건 체크: 습한 날씨(비, 눈)에 물을 주면 과습으로 판단
         weather_penalty_applied = False
         if req.actionType == "water" and req.currentWeather:
             if req.currentWeather in ["비", "눈", "천둥"]:
-                hp_change -= 8
+                rule_based_hp_change -= 8
                 feedback_parts.append(f"⚠️ {req.currentWeather} 날씨에 물을 주면 과습이 될 수 있어요! 뿌리가 썩을 수 있습니다. (-8)")
                 weather_penalty_applied = True
             elif req.currentWeather == "흐림":
-                hp_change -= 3
+                rule_based_hp_change -= 3
                 feedback_parts.append(f"흐린 날씨에 물을 주는 것은 조금 위험할 수 있어요. (-3)")
                 weather_penalty_applied = True
         
@@ -843,10 +843,10 @@ def evaluate_game_action(req: GameActionRequest):
                     if "매일" in watering_freq:
                         # 매일 물을 주는 것이 정상
                         if water_count_today == 1:
-                            hp_change += 3
+                            rule_based_hp_change += 3
                             feedback_parts.append("적절한 물주기입니다! (+3)")
                         elif water_count_today > 1:
-                            hp_change -= 5
+                            rule_based_hp_change -= 5
                             feedback_parts.append("하루에 여러 번 물을 주면 과습이 될 수 있어요! (-5)")
                     elif "겉흙 마르면" in watering_freq:
                         # "겉흙 마르면"은 필요할 때만 주는 것 (매일이 아님)
@@ -862,37 +862,37 @@ def evaluate_game_action(req: GameActionRequest):
                                                     and a.get("day") >= req.day - 2 
                                                     and a.get("day") <= req.day)
                             if recent_water_count >= 3:  # 최근 3일간 3번 이상 주면 과습
-                                hp_change -= 5
+                                rule_based_hp_change -= 5
                                 feedback_parts.append("'겉흙 마르면' 주는 것이므로 매일 주면 과습이 될 수 있어요! 특히 초반에는 과습을 피해야 합니다. (-5)")
                             else:
-                                hp_change += 1
+                                rule_based_hp_change += 1
                                 feedback_parts.append("적절한 물주기입니다! (+1)")
                         elif water_count_today > 1:
-                            hp_change -= 5
+                            rule_based_hp_change -= 5
                             feedback_parts.append("하루에 여러 번 물을 주면 과습이 될 수 있어요! '겉흙 마르면' 주는 것이므로 필요할 때만 주세요. (-5)")
                     elif "주 2~3회" in watering_freq:
                         # 주 2~3회면 3~4일마다 한 번
                         if water_count_today == 1:
-                            hp_change += 2
+                            rule_based_hp_change += 2
                             feedback_parts.append("적절한 물주기입니다! (+2)")
                         elif water_count_today > 1:
-                            hp_change -= 4
+                            rule_based_hp_change -= 4
                             feedback_parts.append("물을 너무 자주 주셨어요. (-4)")
                     elif "주 1~2회" in watering_freq or "주 1회" in watering_freq:
                         # 주 1~2회면 3~7일마다 한 번
                         if water_count_today == 1:
-                            hp_change += 2
+                            rule_based_hp_change += 2
                             feedback_parts.append("적절한 물주기입니다! (+2)")
                         elif water_count_today > 1:
-                            hp_change -= 4
+                            rule_based_hp_change -= 4
                             feedback_parts.append("물을 너무 자주 주셨어요. (-4)")
                     elif "2~3일마다" in watering_freq:
                         # 2~3일마다
                         if water_count_today == 1:
-                            hp_change += 2
+                            rule_based_hp_change += 2
                             feedback_parts.append("적절한 물주기입니다! (+2)")
                         elif water_count_today > 1:
-                            hp_change -= 4
+                            rule_based_hp_change -= 4
                             feedback_parts.append("물을 너무 자주 주셨어요. (-4)")
                 # 날씨가 맑지 않은 경우 (흐림 등) - 이미 날씨 페널티가 적용되지 않았으므로 여기서는 평가하지 않음
         
@@ -909,18 +909,18 @@ def evaluate_game_action(req: GameActionRequest):
                     if last_fertilizer_days:
                         days_since_last = req.day - max(last_fertilizer_days)
                         if days_since_last >= expected_days - 2:  # ±2일 여유
-                            hp_change += 4
+                            rule_based_hp_change += 4
                             feedback_parts.append(f"적절한 시기에 비료를 주셨어요! (+4)")
                         elif days_since_last < expected_days - 2:
-                            hp_change -= 3
+                            rule_based_hp_change -= 3
                             feedback_parts.append(f"비료를 너무 자주 주셨어요. {expected_days}일 간격이 적당합니다. (-3)")
                     else:
                         # 첫 비료
                         if req.day >= expected_days - 2:
-                            hp_change += 4
+                            rule_based_hp_change += 4
                             feedback_parts.append(f"적절한 시기에 비료를 주셨어요! (+4)")
                         else:
-                            hp_change -= 2
+                            rule_based_hp_change -= 2
                             feedback_parts.append(f"비료 주기 시기가 이르네요. {expected_days}일 후가 적당합니다. (-2)")
         
         # 4. LLM 기반 종합 판단 (주 판단 로직)
@@ -1043,24 +1043,29 @@ def evaluate_game_action(req: GameActionRequest):
         elif consecutive_bad > 0:
             continuity_info = f"\n⚠️ 중요: 최근 {consecutive_bad}번 연속으로 부적절한 관리가 이루어졌습니다. 이번 행동도 부적절하다면 페널티를 강화하세요 (HP 감소량을 1.5~2배로 증가)."
         
-        # LLM이 종합적으로 판단 (규칙 기반 평가 결과를 참고하되, 최종 판단은 LLM이 수행)
-        chain = game_prompt | llm
-        result = chain.invoke({
-            "crop_name": req.cropName,  # 작물 이름 추가
-            "crop_guide": crop_guide + weather_info + data_info + rule_based_info + continuity_info,
-            "action_type": action_kr,
-            "day": req.day,
-            "current_hp": req.currentHp,
-            "recent_actions": f"{recent_summary}\n오늘 {action_kr} 횟수: {today_action_count}회"
-        })
+        # LLM 판단 초기화
+        llm_hp_change = 0
+        llm_feedback = None
+        llm_speech_bubble = None
         
-        # JSON 응답 파싱 시도
+        # LLM이 종합적으로 판단 (규칙 기반 평가 결과를 참고하되, 최종 판단은 LLM이 수행)
         try:
+            chain = game_prompt | llm
+            result = chain.invoke({
+                "crop_name": req.cropName,  # 작물 이름 추가
+                "crop_guide": crop_guide + weather_info + data_info + rule_based_info + continuity_info,
+                "action_type": action_kr,
+                "day": req.day,
+                "current_hp": req.currentHp,
+                "recent_actions": f"{recent_summary}\n오늘 {action_kr} 횟수: {today_action_count}회"
+            })
+            
+            # JSON 응답 파싱 시도
             response_text = result.content if hasattr(result, "content") else str(result)
             json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
             if json_match:
                 eval_result = json.loads(json_match.group())
-                # LLM 판단 결과를 우선 적용 (규칙 기반 평가가 있으면 참고하되 LLM 판단이 최종)
+                # LLM 판단 결과
                 llm_hp_change = int(eval_result.get("hp_change", 0))
                 llm_feedback = eval_result.get("feedback", "관리 중입니다.")
                 llm_speech_bubble = eval_result.get("speech_bubble", None)  # 말풍선 대사
@@ -1100,33 +1105,48 @@ def evaluate_game_action(req: GameActionRequest):
                         llm_feedback += f" (연속 부적절한 관리 페널티! {int((penalty_multiplier - 1.0) * 100)}% 추가 감소)"
                         if llm_speech_bubble:
                             llm_speech_bubble += f" 계속 이렇게 되면 힘들어요... 제발 날씨를 확인하고 관리해주세요! 😢"
-                
-                # 규칙 기반 평가가 있으면 LLM 판단과 조합 (LLM이 최종 판단)
-                if feedback_parts:
-                    # 규칙 기반 평가는 참고용으로만, LLM 판단이 최종
-                    feedback_parts = [llm_feedback]  # LLM 피드백을 우선
-                else:
-                    feedback_parts = [llm_feedback]
-                
-                # HP 변화는 LLM 판단 결과 사용 (연속성 가중치 적용됨)
-                hp_change = llm_hp_change
-                
-                # 말풍선 대사가 없으면 기본 메시지 생성
-                if not llm_speech_bubble:
-                    if hp_change > 0:
-                        llm_speech_bubble = f"좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚"
-                    elif hp_change < 0:
-                        llm_speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
-                    else:
-                        llm_speech_bubble = f"괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️"
+        except Exception as e:
+            # LLM 호출 실패 시 무시 (규칙 기반 평가 사용)
+            print(f"LLM 호출 오류: {e}")
+        
+        # 피드백 설정
+        if llm_feedback:
+            feedback_parts = [llm_feedback]
+        elif not feedback_parts:
+            feedback_parts = ["관리 중입니다."]
+        
+        # HP 변화는 규칙 기반 평가와 LLM 판단을 조합
+        # 규칙 기반 평가가 양수면 최소한 그 값은 보장하고, LLM이 더 높은 값을 주면 그것을 사용
+        if rule_based_hp_change > 0:
+            # 규칙 기반 평가가 양수면, LLM 판단과 비교하여 더 큰 값을 사용
+            # 단, LLM이 음수로 판단한 경우는 규칙 기반 평가를 우선
+            if llm_hp_change < 0:
+                # LLM이 음수로 판단했지만 규칙 기반 평가가 양수면 규칙 기반 평가 사용
+                hp_change = rule_based_hp_change
+            elif llm_hp_change == 0:
+                # LLM이 0을 반환했지만 규칙 기반 평가가 양수면 규칙 기반 평가 사용
+                hp_change = rule_based_hp_change
             else:
-                # JSON 파싱 실패 시 규칙 기반 평가 결과 사용
-                if not feedback_parts:
-                    feedback_parts.append(response_text[:100] if response_text else "관리 중입니다.")
-        except:
-            # LLM 호출 실패 시 규칙 기반 평가 결과 사용
-            if not feedback_parts:
-                feedback_parts.append("관리 중입니다.")
+                # 둘 다 양수면 더 큰 값 사용 (LLM 판단에 보너스가 적용되어 있을 수 있음)
+                hp_change = max(rule_based_hp_change, llm_hp_change)
+        elif rule_based_hp_change < 0:
+            # 규칙 기반 평가가 음수면 (페널티), LLM 판단과 비교하여 더 나쁜 값 사용
+            if llm_hp_change == 0:
+                hp_change = rule_based_hp_change
+            else:
+                hp_change = min(rule_based_hp_change, llm_hp_change)
+        else:
+            # 규칙 기반 평가가 0이면 LLM 판단 사용
+            hp_change = llm_hp_change
+        
+        # 말풍선 대사가 없으면 기본 메시지 생성
+        if not llm_speech_bubble:
+            if hp_change > 0:
+                llm_speech_bubble = f"좋은 관리 감사해요! 이렇게 계속 챙겨주시면 더 건강해질 거예요! 💚"
+            elif hp_change < 0:
+                llm_speech_bubble = f"조금 힘들어요... 날씨를 확인하고 적절한 시기에 관리해주시면 좋겠어요! 🌱"
+            else:
+                llm_speech_bubble = f"괜찮아요! 조금만 더 신경 써주시면 더 좋을 것 같아요! ☀️"
         
         # 최종 피드백 조합
         feedback = " ".join(feedback_parts) if feedback_parts else "관리 중입니다."
