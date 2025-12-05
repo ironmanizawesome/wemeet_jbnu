@@ -431,6 +431,9 @@ async function initGame() {
   // UI 업데이트
   updateUI();
   
+  // 배경 애니메이션 시작
+  startBackgroundAnimation();
+  
   // 시간 체크 시작 (1분마다 체크)
   startTimeCheckInterval();
   
@@ -559,6 +562,7 @@ window.addEventListener("beforeunload", () => {
     clearInterval(timeCheckInterval);
   }
   stopWateringAnimation();
+  stopBackgroundAnimation();
 });
 
 // 게임 상태 로드
@@ -667,8 +671,14 @@ function updateWeatherBasedOnDate() {
   
   // 날짜가 바뀌었거나 기상이 아직 설정되지 않았으면 새로 선택
   if (gameState.weatherDate !== currentDay || !gameState.currentWeather) {
+    const previousWeather = gameState.currentWeather;
     gameState.currentWeather = selectWeatherByMonth(currentMonth);
     gameState.weatherDate = currentDay;
+    
+    // 날씨가 변경되었으면 배경도 업데이트
+    if (previousWeather !== gameState.currentWeather) {
+      updateBackgroundForWeather();
+    }
   }
   
   return gameState.currentWeather;
