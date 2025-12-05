@@ -87,6 +87,109 @@ function calculateLevelSync(day) {
 let wateringAnimationInterval = null;
 let wateringImageIndex = 0; // 0 또는 1 (water 또는 water2)
 
+// 배경 이미지 애니메이션 관련 변수
+let backgroundAnimationInterval = null;
+let backgroundImageIndex = 0;
+
+// 날씨별 배경 이미지 매핑
+const BACKGROUND_IMAGES = {
+  // 맑음 배경 (바람, 안개 포함)
+  sunny: [
+    "images/background/main_background.png"
+  ],
+  // 흐림 배경
+  cloudy: [
+    "images/background/backgroud_cloud1.png",
+    "images/background/backgroud_cloud2.png"
+  ],
+  // 눈 올 때 배경
+  snow: [
+    "images/background/background_snow1.png",
+    "images/background/background_snow2.png"
+  ],
+  // 비 올 때 배경 (비, 천둥)
+  rain: [
+    "images/background/background_rain1.png",
+    "images/background/background_rain2.png"
+  ]
+};
+
+// 날씨에 따른 배경 타입 결정
+function getBackgroundTypeByWeather(weather) {
+  switch (weather) {
+    case "눈":
+      return "snow";
+    case "비":
+    case "천둥":
+      return "rain";
+    case "흐림":
+      return "cloudy";
+    case "맑음":
+    case "바람":
+    case "안개":
+    default:
+      return "sunny";
+  }
+}
+
+// 배경 이미지 업데이트
+function updateBackgroundImage() {
+  const gameContainer = document.querySelector(".game-container");
+  if (!gameContainer) return;
+  
+  const weather = gameState.currentWeather || "맑음";
+  const bgType = getBackgroundTypeByWeather(weather);
+  const bgImages = BACKGROUND_IMAGES[bgType];
+  
+  if (!bgImages || bgImages.length === 0) return;
+  
+  // 현재 인덱스의 배경 이미지 적용
+  const currentBgImage = bgImages[backgroundImageIndex % bgImages.length];
+  gameContainer.style.backgroundImage = `url('${currentBgImage}')`;
+  gameContainer.style.backgroundSize = "cover";
+  gameContainer.style.backgroundPosition = "center";
+  gameContainer.style.backgroundRepeat = "no-repeat";
+}
+
+// 배경 애니메이션 시작
+function startBackgroundAnimation() {
+  // 기존 애니메이션 정리
+  stopBackgroundAnimation();
+  
+  backgroundImageIndex = 0;
+  
+  // 첫 번째 이미지 즉시 표시
+  updateBackgroundImage();
+  
+  // 1초마다 이미지 번갈아가며 표시
+  backgroundAnimationInterval = setInterval(() => {
+    backgroundImageIndex++;
+    updateBackgroundImage();
+  }, 1000); // 1초 간격
+}
+
+// 배경 애니메이션 중지
+function stopBackgroundAnimation() {
+  if (backgroundAnimationInterval) {
+    clearInterval(backgroundAnimationInterval);
+    backgroundAnimationInterval = null;
+  }
+}
+
+// 날씨 변경 시 배경 업데이트 (애니메이션 재시작)
+function updateBackgroundForWeather() {
+  // 배경 인덱스 초기화 및 애니메이션 재시작
+  backgroundImageIndex = 0;
+  
+  // 애니메이션이 실행 중이 아니면 시작
+  if (!backgroundAnimationInterval) {
+    startBackgroundAnimation();
+  } else {
+    // 이미 실행 중이면 이미지만 즉시 업데이트
+    updateBackgroundImage();
+  }
+}
+
 // 작물 이미지 경로 생성
 function getCropImagePath(state = null, useWater2 = false) {
   const cropFolder = CROP_FOLDER_NAMES[gameState.cropName];
