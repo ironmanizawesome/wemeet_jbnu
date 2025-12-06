@@ -17,7 +17,7 @@ const CROP_FOLDER_NAMES = {
   "오이": "cucumber",
   "토마토": "tomato",
   "당근": "carrot",
-  "부추": "chive"
+  "부추": "chives"
 };
 
 // 작물별 이미지 상태 매핑 (파일명 차이 처리)
@@ -44,6 +44,35 @@ const CROP_IMAGE_CONFIG = {
     hasFertilizer2: true,
     // fertilizer2 파일명 (토마토는 오타 fertilzer2)
     fertilizer2Name: "fertilzer2"
+  },
+  "오이": {
+    // 병해충 이미지 이름 (모든 레벨에서 sick)
+    sicknessName: "sick",
+    // 비료 애니메이션 사용 여부
+    hasFertilizer2: true,
+    // Lv4의 normal 이미지는 특수 형식 (언더스코어 없이 CucumberLv4.png)
+    normalFallback: {
+      4: null  // Lv4만 CucumberLv4.png 형식
+    },
+    specialNormalFormat: true,
+    // normal 이미지 파일명이 소문자로 시작 (cucumberLv1_normal.png)
+    lowercaseNormal: true
+  },
+  "당근": {
+    // 병해충 이미지 이름 (모든 레벨에서 sick)
+    sicknessName: "sick",
+    // 비료 애니메이션 사용 여부
+    hasFertilizer2: true,
+    // Lv2의 pesticide 오타 처리 (persticide)
+    pesticideTypo: {
+      2: "persticide"
+    }
+  },
+  "부추": {
+    // 병해충 이미지 이름 (모든 레벨에서 sick)
+    sicknessName: "sick",
+    // 비료 애니메이션 사용 여부
+    hasFertilizer2: true
   }
 };
 
@@ -249,15 +278,24 @@ function getCropImagePath(state = null, useAlternate = false) {
         if (useAlternate) {
           imageState = "sad&water2";
         } else {
-          imageState = "sad&water";
+          // 오이처럼 sad&water가 없는 레벨은 sad&water2 사용
+          if (cropConfig.useWater2Only && level === 4) {
+            imageState = "sad&water2";
+          } else {
+            imageState = "sad&water";
+          }
         }
       } else {
         // 정상 상태에서 물주기
         if (useAlternate) {
           imageState = "water2";
         } else {
+          // 오이처럼 water가 없고 water2만 있는 작물
+          if (cropConfig.useWater2Only) {
+            imageState = "water2";
+          }
           // 작물별 설정에 따라 water 또는 watering 사용
-          if (cropConfig.useWateringForLv2Lv3 && (level === 2 || level === 3)) {
+          else if (cropConfig.useWateringForLv2Lv3 && (level === 2 || level === 3)) {
             imageState = "watering";
           } else {
             imageState = "water";
@@ -267,16 +305,34 @@ function getCropImagePath(state = null, useAlternate = false) {
     }
     // 비료주기 상태 처리
     else if (state === "fertilizer") {
-      if (useAlternate && cropConfig.hasFertilizer2) {
+      // 오이처럼 fertilizer가 없고 fertilizer2만 있는 작물
+      if (cropConfig.useFertilizer2Only) {
+        // HP가 70 미만이면 sad&fertilizer 또는 sad&fertilizer2 사용
+        if (gameState.hp < 70) {
+          imageState = useAlternate ? "sad&fertilizer2" : "sad&fertilizer";
+        } else {
+          imageState = "fertilizer2";
+        }
+      } else if (useAlternate && cropConfig.hasFertilizer2) {
         // 작물별 fertilizer2 파일명 사용 (오타 처리)
         imageState = cropConfig.fertilizer2Name || "fertilizer2";
       } else {
         imageState = "fertilizer";
       }
     }
-    // 농약은 그대로 사용
-    else {
-      imageState = state;
+    // 농약 상태 처리
+    else if (state === "pesticide") {
+      // HP가 70 미만이면 sad&pesticide 또는 sad&pesticide2 사용 (오이)
+      if (cropConfig.useFertilizer2Only && gameState.hp < 70) {
+        imageState = useAlternate ? "sad&pesticide2" : "sad&pesticide";
+      } else {
+        // 레벨별 pesticide 오타 처리 (당근 Lv2: persticide)
+        let pesticideName = "pesticide";
+        if (cropConfig.pesticideTypo && cropConfig.pesticideTypo[level]) {
+          pesticideName = cropConfig.pesticideTypo[level];
+        }
+        imageState = useAlternate ? pesticideName + "2" : pesticideName;
+      }
     }
   }
   // 병해충이 있으면 sickness/sick 우선 (행동 중이 아닐 때)
@@ -295,11 +351,33 @@ function getCropImagePath(state = null, useAlternate = false) {
   }
   // HP가 70 미만이면 sad 표시
   else if (gameState.hp < 70) {
-    imageState = "sad";
+    // 오이처럼 sad 단독 이미지가 없는 경우 대체 이미지 사용
+    if (cropConfig.sadFallback) {
+      imageState = cropConfig.sadFallback;
+    } else {
+      imageState = "sad";
+    }
   }
   // 그 외에는 normal 또는 전달된 상태
   else {
     imageState = state || gameState.currentImageState || "normal";
+    
+    // normal 이미지가 없는 작물의 경우 대체 이미지 사용
+    if (imageState === "normal" && cropConfig.normalFallback) {
+      const fallback = cropConfig.normalFallback[level];
+      if (fallback !== null && fallback !== undefined) {
+        imageState = fallback;
+      } else if (cropConfig.specialNormalFormat && fallback === null) {
+        // Lv4 오이처럼 특수 형식의 normal 이미지 (CucumberLv4.png)
+        const cropNameEng = cropFolder.charAt(0).toUpperCase() + cropFolder.slice(1);
+        return `images/${cropFolder}/${cropNameEng}Lv${level}.png`;
+      }
+    }
+    
+    // 소문자 normal 이미지 파일명 처리 (cucumberLv1_normal.png)
+    if (imageState === "normal" && cropConfig.lowercaseNormal) {
+      return `images/${cropFolder}/${cropFolder}Lv${level}_${imageState}.png`;
+    }
   }
   
   // 작물 이름을 영어로 변환 (첫 글자 대문자)
@@ -589,6 +667,14 @@ const diaryEntries = document.getElementById("diaryEntries");
 const characterManageMenuItem = document.getElementById("characterManageMenuItem");
 const logoutMenuItem = document.getElementById("logoutMenuItem");
 
+// 도감 관련 요소
+const collectionButton = document.getElementById("collectionButton");
+const collectionModal = document.getElementById("collectionModal");
+const collectionClose = document.getElementById("collectionClose");
+const collectionGrid = document.getElementById("collectionGrid");
+const totalHarvests = document.getElementById("totalHarvests");
+const uniqueCrops = document.getElementById("uniqueCrops");
+
 // 로그인 정보 확인 및 게임 상태 로드
 async function initGame() {
   const username = sessionStorage.getItem("username") || sessionStorage.getItem("userName") || "";
@@ -673,6 +759,31 @@ async function initGame() {
     diaryModal.addEventListener("click", (e) => {
       if (e.target === diaryModal) {
         hideDiary();
+      }
+    });
+  }
+  
+  // 도감 버튼 이벤트 리스너
+  if (collectionButton) {
+    collectionButton.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await showCollection();
+    });
+  }
+
+  // 도감 닫기 버튼 이벤트 리스너
+  if (collectionClose) {
+    collectionClose.addEventListener("click", (e) => {
+      e.preventDefault();
+      hideCollection();
+    });
+  }
+
+  // 도감 모달 외부 클릭 시 닫기
+  if (collectionModal) {
+    collectionModal.addEventListener("click", (e) => {
+      if (e.target === collectionModal) {
+        hideCollection();
       }
     });
   }
@@ -1651,39 +1762,62 @@ async function harvest() {
     return;
   }
 
+  // 수확 확인
+  if (!confirm(`${gameState.cropName}을(를) 수확하시겠습니까?\n\n수확하면 작물이 도감에 등록되고, 현재 키우던 작물은 사라집니다.`)) {
+    return;
+  }
+
   try {
-    // 수확 전 피드백 요청
-    const response = await fetch(`${API_BASE}/game/harvest-feedback`, {
+    // 수확하고 도감에 추가
+    const response = await fetch(`${API_BASE}/game/harvest-and-collect`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         userId: gameState.userId,
         cropName: gameState.cropName,
         finalHp: gameState.hp,
-        totalDays: currentDay,
-        actions: gameState.actions
+        totalDays: currentDay
       })
     });
 
     if (!response.ok) {
-      throw new Error("피드백 요청 실패");
+      throw new Error("수확 요청 실패");
     }
 
     const result = await response.json();
     
+    if (!result.success) {
+      showFeedback(result.message || "수확 처리 중 오류가 발생했습니다.", "error");
+      return;
+    }
+    
+    // 등급별 이모지
+    const gradeEmoji = {
+      "S": "🏆",
+      "A": "🥇",
+      "B": "🥈",
+      "C": "🥉",
+      "D": "📝"
+    };
+    
     // 성공 메시지 표시
-    alert(`🎉 수확 성공!\n\n${result.message}\n\n최종 건강도: ${gameState.hp}/100`);
+    const emoji = gradeEmoji[result.grade] || "🌾";
+    alert(`🎉 수확 완료!\n\n${result.message}\n\n${emoji} 등급: ${result.grade}\n📊 건강도: ${gameState.hp}/100\n📅 재배 일수: ${currentDay}일\n📚 도감 등록 횟수: ${result.collectionCount}회`);
     
     // 게임 완료 처리
     sessionStorage.setItem("lastGameResult", JSON.stringify({
       cropName: gameState.cropName,
       finalHp: gameState.hp,
       totalDays: currentDay,
+      grade: result.grade,
       success: true
     }));
+    
+    // 현재 작물 정보 삭제
+    sessionStorage.removeItem("cropName");
 
-    // 메인으로 이동
-    window.location.href = "main.html";
+    // 캐릭터 선택 화면으로 이동 (새 작물 선택 또는 도감 확인)
+    window.location.href = "character-select.html";
 
   } catch (error) {
     console.error("수확 실패:", error);
@@ -2079,6 +2213,64 @@ async function showDiary() {
 function hideDiary() {
   if (diaryModal) {
     diaryModal.classList.remove("show");
+  }
+}
+
+// 도감 표시
+async function showCollection() {
+  if (!collectionModal || !collectionGrid) return;
+
+  collectionModal.classList.add("show");
+  
+  try {
+    // 도감 요약 정보 가져오기
+    const response = await fetch(`${API_BASE}/game/collection/${gameState.userId}/summary`);
+    if (!response.ok) {
+      throw new Error("도감 조회 실패");
+    }
+
+    const data = await response.json();
+    
+    // 통계 업데이트
+    if (totalHarvests) {
+      totalHarvests.textContent = data.totalHarvests || 0;
+    }
+    if (uniqueCrops) {
+      uniqueCrops.textContent = data.uniqueCrops || 0;
+    }
+    
+    const crops = data.crops || [];
+
+    if (crops.length === 0) {
+      collectionGrid.innerHTML = '<div class="collection-empty">아직 수확한 작물이 없어요. 작물을 키워서 수확해보세요! 🌱</div>';
+      return;
+    }
+
+    // 도감 목록 생성
+    collectionGrid.innerHTML = crops.map(crop => {
+      const icon = CROP_ICONS[crop.cropName] || "🌱";
+      const gradeClass = `grade-${crop.bestGrade}`;
+      
+      return `
+        <div class="collection-item">
+          <div class="collection-item-icon">${icon}</div>
+          <div class="collection-item-name">${crop.cropName}</div>
+          <div class="collection-item-grade ${gradeClass}">${crop.bestGrade}</div>
+          <div class="collection-item-hp">최고 HP: ${crop.bestHp}</div>
+          <div class="collection-item-count">수확 ${crop.harvestCount}회</div>
+        </div>
+      `;
+    }).join("");
+  } catch (error) {
+    console.error("도감 조회 실패:", error);
+    collectionGrid.innerHTML = '<div class="collection-empty">도감을 불러오는 중 오류가 발생했습니다. 😢</div>';
+  }
+}
+
+// 도감 숨기기
+function hideCollection() {
+  if (collectionModal) {
+    collectionModal.classList.remove("show");
   }
 }
 

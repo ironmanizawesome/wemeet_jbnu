@@ -146,6 +146,73 @@ async function deleteCrop(cropName) {
   }
 }
 
+// 도감 표시
+async function showCollection() {
+  const collectionModal = document.getElementById("collectionModal");
+  const collectionGrid = document.getElementById("collectionGrid");
+  const totalHarvests = document.getElementById("totalHarvests");
+  const uniqueCrops = document.getElementById("uniqueCrops");
+  
+  if (!collectionModal || !collectionGrid) return;
+
+  collectionModal.classList.add("show");
+  
+  const username = await checkLogin();
+  if (!username) return;
+  
+  try {
+    // 도감 요약 정보 가져오기
+    const response = await fetch(`${API_BASE}/game/collection/${encodeURIComponent(username)}/summary`);
+    if (!response.ok) {
+      throw new Error("도감 조회 실패");
+    }
+
+    const data = await response.json();
+    
+    // 통계 업데이트
+    if (totalHarvests) {
+      totalHarvests.textContent = data.totalHarvests || 0;
+    }
+    if (uniqueCrops) {
+      uniqueCrops.textContent = data.uniqueCrops || 0;
+    }
+    
+    const crops = data.crops || [];
+
+    if (crops.length === 0) {
+      collectionGrid.innerHTML = '<div class="collection-empty">아직 수확한 작물이 없어요. 작물을 키워서 수확해보세요! 🌱</div>';
+      return;
+    }
+
+    // 도감 목록 생성
+    collectionGrid.innerHTML = crops.map(crop => {
+      const icon = CROP_ICONS[crop.cropName] || "🌱";
+      const gradeClass = `grade-${crop.bestGrade}`;
+      
+      return `
+        <div class="collection-item">
+          <div class="collection-item-icon">${icon}</div>
+          <div class="collection-item-name">${crop.cropName}</div>
+          <div class="collection-item-grade ${gradeClass}">${crop.bestGrade}</div>
+          <div class="collection-item-hp">최고 HP: ${crop.bestHp}</div>
+          <div class="collection-item-count">수확 ${crop.harvestCount}회</div>
+        </div>
+      `;
+    }).join("");
+  } catch (error) {
+    console.error("도감 조회 실패:", error);
+    collectionGrid.innerHTML = '<div class="collection-empty">도감을 불러오는 중 오류가 발생했습니다. 😢</div>';
+  }
+}
+
+// 도감 숨기기
+function hideCollection() {
+  const collectionModal = document.getElementById("collectionModal");
+  if (collectionModal) {
+    collectionModal.classList.remove("show");
+  }
+}
+
 // 페이지 초기화
 async function init() {
   const username = await checkLogin();
@@ -166,6 +233,34 @@ async function init() {
   for (let i = 0; i < emptySlots; i++) {
     const emptyCard = renderEmptySlot();
     cropsGrid.appendChild(emptyCard);
+  }
+  
+  // 도감 버튼 이벤트 리스너
+  const collectionButton = document.getElementById("collectionButton");
+  if (collectionButton) {
+    collectionButton.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await showCollection();
+    });
+  }
+
+  // 도감 닫기 버튼 이벤트 리스너
+  const collectionClose = document.getElementById("collectionClose");
+  if (collectionClose) {
+    collectionClose.addEventListener("click", (e) => {
+      e.preventDefault();
+      hideCollection();
+    });
+  }
+
+  // 도감 모달 외부 클릭 시 닫기
+  const collectionModal = document.getElementById("collectionModal");
+  if (collectionModal) {
+    collectionModal.addEventListener("click", (e) => {
+      if (e.target === collectionModal) {
+        hideCollection();
+      }
+    });
   }
 }
 
