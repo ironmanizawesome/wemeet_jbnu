@@ -175,6 +175,18 @@ class LoginResponse(BaseModel):
     email: Optional[str] = None
 
 
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+
+
+class RegisterResponse(BaseModel):
+    success: bool
+    message: str
+    username: Optional[str] = None
+
+
 # =========================================================
 # 게임 관련 모델
 # =========================================================
@@ -248,6 +260,70 @@ def login(req: LoginRequest):
         username=user.get("username"),
         email=user.get("email")
     )
+
+# =========================================================
+# 6-2. 회원가입 API
+# =========================================================
+@app.post("/auth/register", response_model=RegisterResponse)
+def register(req: RegisterRequest):
+    # 유효성 검사
+    if not req.username or len(req.username) < 2:
+        return RegisterResponse(
+            success=False,
+            message="아이디는 2자 이상이어야 합니다."
+        )
+    
+    if not req.password or len(req.password) < 4:
+        return RegisterResponse(
+            success=False,
+            message="비밀번호는 4자 이상이어야 합니다."
+        )
+    
+    # 아이디 중복 체크
+    existing_user = users_collection.find_one({"username": req.username})
+    if existing_user:
+        return RegisterResponse(
+            success=False,
+            message="이미 사용 중인 아이디입니다."
+        )
+    
+    # 이메일 중복 체크 (이메일이 제공된 경우)
+    if req.email:
+        existing_email = users_collection.find_one({"email": req.email})
+        if existing_email:
+            return RegisterResponse(
+                success=False,
+                message="이미 사용 중인 이메일입니다."
+            )
+    
+    # 새 사용자 생성
+    new_user = {
+        "username": req.username,
+        "password": req.password,  # 실제 운영 환경에서는 해시화 필요
+        "email": req.email or f"{req.username}@example.com",
+        "createdAt": datetime.now().isoformat()
+    }
+    
+    users_collection.insert_one(new_user)
+    print(f"✅ 새 사용자 등록 완료: {req.username}")
+    
+    return RegisterResponse(
+        success=True,
+        message="회원가입이 완료되었습니다! 로그인해주세요.",
+        username=req.username
+    )
+
+
+# =========================================================
+# 6-3. 아이디 중복 체크 API
+# =========================================================
+@app.get("/auth/check-username/{username}")
+def check_username(username: str):
+    existing_user = users_collection.find_one({"username": username})
+    return {
+        "available": existing_user is None,
+        "message": "사용 가능한 아이디입니다." if existing_user is None else "이미 사용 중인 아이디입니다."
+    }
 
 # =========================================================
 # 7. 프로필 저장 / 업데이트

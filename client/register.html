@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>회원가입</title>
+  <style>
+    :root{
+      --bg:#0f172a;        /* slate-900 */
+      --card:#0b1224cc;    /* translucent card */
+      --text:#e5e7eb;      /* gray-200 */
+      --muted:#9ca3af;     /* gray-400 */
+      --primary:#6366f1;   /* indigo-500 */
+      --primary-600:#5458e9;
+      --ring:#93c5fd;      /* sky-300 */
+      --error:#ef4444;     /* red-500 */
+      --ok:#10b981;        /* emerald-500 */
+      --border:#233055;
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg:#f1f5f9;      /* slate-100 */
+        --card:#ffffffcc;
+        --text:#0f172a;    /* slate-900 */
+        --muted:#64748b;   /* slate-500 */
+        --primary:#4f46e5; /* indigo-600 */
+        --primary-600:#4338ca;
+        --ring:#2563eb;    /* blue-600 */
+        --border:#e2e8f0;  /* slate-200 */
+      }
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
+      color:var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% 10%, #1e293b55, transparent 60%),
+        radial-gradient(800px 400px at 90% 20%, #312e8150, transparent 60%),
+        radial-gradient(900px 500px at 50% 100%, #0ea5e950, transparent 60%),
+        var(--bg);
+      display:grid;
+      place-items:center;
+      padding:24px;
+    }
+    .card{
+      width:100%;
+      max-width:420px;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+      backdrop-filter: blur(10px);
+      padding:28px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:12px; margin-bottom:14px;
+    }
+    .logo{
+      width:40px; height:40px; border-radius:12px;
+      background: linear-gradient(135deg,#60a5fa, #8b5cf6);
+      display:grid; place-items:center; color:white; font-weight:800;
+      letter-spacing:.5px;
+      box-shadow:0 10px 24px rgba(99,102,241,.35);
+    }
+    h1{
+      font-size:1.25rem; margin:0 0 4px 0;
+    }
+    p.desc{
+      margin:0 0 18px 0; color:var(--muted); font-size:.95rem;
+    }
+    form{display:grid; gap:14px}
+    .field{display:grid; gap:6px}
+    label{font-size:.9rem}
+    .control{
+      position:relative
+    }
+    input[type="text"],
+    input[type="email"],
+    input[type="password"]{
+      width:100%;
+      appearance:none;
+      background:#0b1224;
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:14px 44px 14px 14px;
+      outline:none;
+      transition:border-color .2s, box-shadow .2s, background .2s;
+    }
+    @media (prefers-color-scheme: light){
+      input[type="text"], input[type="email"], input[type="password"]{ background:#fff;}
+    }
+    input::placeholder{color:var(--muted)}
+    input:focus{
+      border-color:var(--ring);
+      box-shadow:0 0 0 4px color-mix(in oklab, var(--ring) 35%, transparent);
+    }
+    input.valid{
+      border-color:var(--ok);
+    }
+    input.invalid{
+      border-color:var(--error);
+    }
+    .toggle{
+      position:absolute; right:10px; top:50%; transform:translateY(-50%);
+      border:none; background:transparent; color:var(--muted);
+      cursor:pointer; padding:6px; border-radius:8px;
+    }
+    .toggle:focus-visible{
+      outline:2px solid var(--ring); outline-offset:2px;
+    }
+    .check-btn{
+      position:absolute; right:10px; top:50%; transform:translateY(-50%);
+      border:none; background:var(--primary); color:white;
+      cursor:pointer; padding:6px 10px; border-radius:8px;
+      font-size:.8rem; font-weight:600;
+    }
+    .check-btn:hover{
+      background:var(--primary-600);
+    }
+    .check-btn:disabled{
+      background:var(--muted);
+      cursor:not-allowed;
+    }
+    .hint-text{
+      font-size:.8rem; color:var(--muted); margin-top:4px;
+    }
+    .hint-text.ok{
+      color:var(--ok);
+    }
+    .hint-text.error{
+      color:var(--error);
+    }
+    .actions{ display:grid; gap:10px; margin-top:6px}
+    .btn{
+      width:100%;
+      border:none; border-radius:12px; padding:12px 14px; cursor:pointer;
+      font-weight:700; color:white; background:var(--primary);
+      transition: transform .04s ease, box-shadow .2s, background .2s;
+      box-shadow:0 10px 22px color-mix(in oklab, var(--primary) 35%, transparent);
+    }
+    .btn:hover{ background:var(--primary-600) }
+    .btn:active{ transform: translateY(1px) }
+    .btn:disabled{
+      background:var(--muted);
+      cursor:not-allowed;
+      box-shadow:none;
+    }
+    .btn.secondary{
+      background:transparent; color:var(--text); border:1px solid var(--border);
+      box-shadow:none;
+    }
+    .error{
+      display:none;
+      background: color-mix(in oklab, var(--error) 15%, transparent);
+      border:1px solid color-mix(in oklab, var(--error) 35%, transparent);
+      color:#fecaca; /* red-200 */
+      padding:10px 12px; border-radius:10px; font-size:.9rem;
+    }
+    .error.show{ display:block }
+    .success{
+      display:none;
+      background: color-mix(in oklab, var(--ok) 15%, transparent);
+      border:1px solid color-mix(in oklab, var(--ok) 35%, transparent);
+      color:#d1fae5;
+      padding:10px 12px; border-radius:10px; font-size:.9rem;
+    }
+    .success.show{ display:block }
+    footer{
+      margin-top:18px; text-align:center; color:var(--muted); font-size:.85rem;
+    }
+    footer a{
+      color:var(--primary);
+      text-decoration:none;
+    }
+    footer a:hover{
+      text-decoration:underline;
+    }
+  </style>
+</head>
+<body>
+  <main class="card" aria-labelledby="title">
+    <div class="brand" aria-hidden="true">
+      <div class="logo" aria-hidden="true">🌱</div>
+      <div>
+        <h1 id="title">회원가입</h1>
+        <p class="desc">농업 다마고치에 가입하세요!</p>
+      </div>
+    </div>
+
+    <div id="error" class="error" role="alert"></div>
+    <div id="success" class="success" role="status"></div>
+
+    <form id="registerForm" method="POST" novalidate>
+      <div class="field">
+        <label for="username">아이디</label>
+        <div class="control">
+          <input id="username" name="username" type="text" inputmode="text"
+                 placeholder="2자 이상 입력" autocomplete="username" required minlength="2" />
+          <button class="check-btn" type="button" id="checkUsernameBtn">중복확인</button>
+        </div>
+        <div id="usernameHint" class="hint-text"></div>
+      </div>
+
+      <div class="field">
+        <label for="email">이메일 (선택)</label>
+        <div class="control">
+          <input id="email" name="email" type="email"
+                 placeholder="example@email.com" autocomplete="email" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="password">비밀번호</label>
+        <div class="control">
+          <input id="password" name="password" type="password"
+                 placeholder="4자 이상" autocomplete="new-password" minlength="4" required />
+          <button class="toggle" type="button" aria-label="비밀번호 보기" id="togglePassword">보기</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="passwordConfirm">비밀번호 확인</label>
+        <div class="control">
+          <input id="passwordConfirm" name="passwordConfirm" type="password"
+                 placeholder="비밀번호 다시 입력" autocomplete="new-password" required />
+          <button class="toggle" type="button" aria-label="비밀번호 확인 보기" id="togglePasswordConfirm">보기</button>
+        </div>
+        <div id="passwordHint" class="hint-text"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" type="submit" id="submitBtn">회원가입</button>
+      </div>
+    </form>
+
+    <footer>이미 계정이 있나요? <a href="login.html">로그인</a></footer>
+  </main>
+
+  <script>
+  const API_BASE = window.API_BASE_URL || "http://127.0.0.1:8000";
+  const form = document.getElementById('registerForm');
+  const username = document.getElementById('username');
+  const email = document.getElementById('email');
+  const password = document.getElementById('password');
+  const passwordConfirm = document.getElementById('passwordConfirm');
+  const togglePassword = document.getElementById('togglePassword');
+  const togglePasswordConfirm = document.getElementById('togglePasswordConfirm');
+  const checkUsernameBtn = document.getElementById('checkUsernameBtn');
+  const usernameHint = document.getElementById('usernameHint');
+  const passwordHint = document.getElementById('passwordHint');
+  const errorBox = document.getElementById('error');
+  const okBox = document.getElementById('success');
+  const submitBtn = document.getElementById('submitBtn');
+
+  let isUsernameChecked = false;
+  let checkedUsername = '';
+
+  // 비밀번호 보기/숨기기
+  togglePassword.addEventListener('click', () => {
+    const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+    password.setAttribute('type', type);
+    togglePassword.textContent = type === 'password' ? '보기' : '숨기기';
+  });
+
+  togglePasswordConfirm.addEventListener('click', () => {
+    const type = passwordConfirm.getAttribute('type') === 'password' ? 'text' : 'password';
+    passwordConfirm.setAttribute('type', type);
+    togglePasswordConfirm.textContent = type === 'password' ? '보기' : '숨기기';
+  });
+
+  // 아이디 입력 시 중복확인 상태 초기화
+  username.addEventListener('input', () => {
+    if (checkedUsername !== username.value.trim()) {
+      isUsernameChecked = false;
+      usernameHint.textContent = '';
+      usernameHint.className = 'hint-text';
+      username.classList.remove('valid', 'invalid');
+    }
+  });
+
+  // 비밀번호 확인 체크
+  passwordConfirm.addEventListener('input', () => {
+    if (passwordConfirm.value && password.value !== passwordConfirm.value) {
+      passwordHint.textContent = '비밀번호가 일치하지 않습니다.';
+      passwordHint.className = 'hint-text error';
+      passwordConfirm.classList.add('invalid');
+      passwordConfirm.classList.remove('valid');
+    } else if (passwordConfirm.value && password.value === passwordConfirm.value) {
+      passwordHint.textContent = '비밀번호가 일치합니다.';
+      passwordHint.className = 'hint-text ok';
+      passwordConfirm.classList.add('valid');
+      passwordConfirm.classList.remove('invalid');
+    } else {
+      passwordHint.textContent = '';
+      passwordHint.className = 'hint-text';
+      passwordConfirm.classList.remove('valid', 'invalid');
+    }
+  });
+
+  password.addEventListener('input', () => {
+    // 비밀번호 변경 시 확인 필드도 다시 체크
+    if (passwordConfirm.value) {
+      passwordConfirm.dispatchEvent(new Event('input'));
+    }
+  });
+
+  // 아이디 중복 확인
+  checkUsernameBtn.addEventListener('click', async () => {
+    const usernameValue = username.value.trim();
+    
+    if (!usernameValue || usernameValue.length < 2) {
+      usernameHint.textContent = '아이디는 2자 이상이어야 합니다.';
+      usernameHint.className = 'hint-text error';
+      username.classList.add('invalid');
+      return;
+    }
+
+    checkUsernameBtn.disabled = true;
+    checkUsernameBtn.textContent = '확인중...';
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/check-username/${usernameValue}`);
+      const data = await response.json();
+
+      if (data.available) {
+        usernameHint.textContent = '사용 가능한 아이디입니다! ✓';
+        usernameHint.className = 'hint-text ok';
+        username.classList.add('valid');
+        username.classList.remove('invalid');
+        isUsernameChecked = true;
+        checkedUsername = usernameValue;
+      } else {
+        usernameHint.textContent = '이미 사용 중인 아이디입니다.';
+        usernameHint.className = 'hint-text error';
+        username.classList.add('invalid');
+        username.classList.remove('valid');
+        isUsernameChecked = false;
+      }
+    } catch (error) {
+      console.error('아이디 중복 확인 오류:', error);
+      usernameHint.textContent = '서버 연결에 실패했습니다.';
+      usernameHint.className = 'hint-text error';
+    } finally {
+      checkUsernameBtn.disabled = false;
+      checkUsernameBtn.textContent = '중복확인';
+    }
+  });
+
+  // 회원가입 폼 제출
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    errorBox.classList.remove('show');
+    okBox.classList.remove('show');
+
+    const usernameValue = username.value.trim();
+    const emailValue = email.value.trim();
+    const passwordValue = password.value;
+    const passwordConfirmValue = passwordConfirm.value;
+
+    // 유효성 검사
+    if (!usernameValue || usernameValue.length < 2) {
+      errorBox.textContent = '아이디는 2자 이상이어야 합니다.';
+      errorBox.classList.add('show');
+      return;
+    }
+
+    if (!isUsernameChecked || checkedUsername !== usernameValue) {
+      errorBox.textContent = '아이디 중복 확인을 해주세요.';
+      errorBox.classList.add('show');
+      return;
+    }
+
+    if (!passwordValue || passwordValue.length < 4) {
+      errorBox.textContent = '비밀번호는 4자 이상이어야 합니다.';
+      errorBox.classList.add('show');
+      return;
+    }
+
+    if (passwordValue !== passwordConfirmValue) {
+      errorBox.textContent = '비밀번호가 일치하지 않습니다.';
+      errorBox.classList.add('show');
+      return;
+    }
+
+    // 로딩 상태
+    submitBtn.disabled = true;
+    submitBtn.textContent = '가입 중...';
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: usernameValue,
+          password: passwordValue,
+          email: emailValue || null
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // 회원가입 성공
+        okBox.textContent = '회원가입이 완료되었습니다! 로그인 페이지로 이동합니다.';
+        okBox.classList.add('show');
+
+        setTimeout(() => {
+          window.location.href = 'login.html';
+        }, 1500);
+      } else {
+        // 회원가입 실패
+        errorBox.textContent = data.message || '회원가입에 실패했습니다.';
+        errorBox.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = '회원가입';
+      }
+    } catch (error) {
+      console.error('회원가입 오류:', error);
+      errorBox.textContent = '서버 연결에 실패했습니다. 서버가 실행 중인지 확인해주세요.';
+      errorBox.classList.add('show');
+      submitBtn.disabled = false;
+      submitBtn.textContent = '회원가입';
+    }
+  });
+</script>
+
+</body>
+</html>
