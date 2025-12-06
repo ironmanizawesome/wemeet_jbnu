@@ -73,6 +73,7 @@ users_collection = db["users"]
 games_collection = db["games"]  # 게임 상태 저장
 chat_responses_collection = db["chat_responses"]  # 챗봇 응답 캐시
 crop_diary_collection = db["crop_diary"]  # 작물일기 저장
+crop_collection_db = db["crop_collection"]  # 작물 도감 저장
 
 # 초기 사용자 데이터 설정 (이미 있으면 건너뜀)
 if users_collection.count_documents({"username": "nongbi"}) == 0:
@@ -2037,15 +2038,24 @@ def delete_crop(user_id: str, crop_name: str):
     
     game_doc = games_collection.find_one({"userId": user_id})
     
-    if not game_doc or not game_doc.get("crops"):
+    if not game_doc:
         return {"ok": False, "message": "작물을 찾을 수 없습니다."}
     
-    crops = game_doc["crops"]
-    crops = [c for c in crops if c.get("cropName") != crop_name]
+    update_data = {"updatedAt": datetime.now().isoformat()}
+    
+    # crops 배열에서 해당 작물 제거
+    if game_doc.get("crops"):
+        crops = game_doc["crops"]
+        crops = [c for c in crops if c.get("cropName") != crop_name]
+        update_data["crops"] = crops
+    
+    # 기존 state에서도 해당 작물 제거 (하위 호환성)
+    if game_doc.get("state") and game_doc["state"].get("cropName") == crop_name:
+        update_data["state"] = None  # 기존 state 초기화
     
     games_collection.update_one(
         {"userId": user_id},
-        {"$set": {"crops": crops, "updatedAt": datetime.now().isoformat()}}
+        {"$set": update_data}
     )
     
     return {"ok": True}
@@ -2225,3 +2235,242 @@ def get_harvest_feedback(req: HarvestFeedbackRequest):
             message=f"수확 준비가 되었습니다! 최종 건강도: {req.finalHp}/100",
             success=req.finalHp >= 70
         )
+
+
+# =========================================================
+# 11. 작물 도감 관련 API
+# =========================================================
+
+class CollectionEntry(BaseModel):
+    cropName: str
+    finalHp: int
+    totalDays: int
+    harvestedAt: str
+    grade: str  # S, A, B, C 등급
+
+
+class AddToCollectionRequest(BaseModel):
+    userId: str
+    cropName: str
+    finalHp: int
+    totalDays: int
+
+
+class AddToCollectionResponse(BaseModel):
+    success: bool
+    message: str
+    grade: str
+    collectionCount: int  # 해당 작물 도감 등록 횟수
+
+
+class CollectionResponse(BaseModel):
+    collection: List[dict]
+
+
+def calculate_grade(final_hp: int, total_days: int, growing_period: Optional[int]) -> str:
+    """수확 결과에 따른 등급 계산"""
+    # HP 기반 기본 점수 (0-50점)
+    hp_score = final_hp * 0.5
+    
+    # 재배 기간 기반 점수 (0-50점)
+    period_score = 25  # 기본값
+    if growing_period:
+        # 적정 재배 기간 비율에 따라 점수 부여
+        period_ratio = total_days / growing_period
+        if period_ratio >= 0.9 and period_ratio <= 1.1:
+            # 90~110% 범위 내면 만점
+            period_score = 50
+        elif period_ratio >= 0.8 and period_ratio <= 1.2:
+            # 80~120% 범위 내면 양호
+            period_score = 40
+        elif period_ratio >= 0.7:
+            # 70% 이상이면 보통
+            period_score = 30
+        else:
+            # 70% 미만이면 낮은 점수
+            period_score = 15
+    
+    total_score = hp_score + period_score
+    
+    # 등급 결정
+    if total_score >= 90:
+        return "S"
+    elif total_score >= 80:
+        return "A"
+    elif total_score >= 70:
+        return "B"
+    elif total_score >= 60:
+        return "C"
+    else:
+        return "D"
+
+
+@app.post("/game/collection/add", response_model=AddToCollectionResponse)
+def add_to_collection(req: AddToCollectionRequest):
+    """수확한 작물을 도감에 추가"""
+    try:
+        # 재배 기간 확인
+        growing_period = get_growing_period(req.cropName)
+        
+        # 등급 계산
+        grade = calculate_grade(req.finalHp, req.totalDays, growing_period)
+        
+        # 도감에 추가
+        entry = {
+            "userId": req.userId,
+            "cropName": req.cropName,
+            "finalHp": req.finalHp,
+            "totalDays": req.totalDays,
+            "harvestedAt": datetime.now().isoformat(),
+            "grade": grade,
+            "growingPeriod": growing_period
+        }
+        
+        crop_collection_db.insert_one(entry)
+        
+        # 해당 작물의 도감 등록 횟수 조회
+        collection_count = crop_collection_db.count_documents({
+            "userId": req.userId,
+            "cropName": req.cropName
+        })
+        
+        # 등급별 메시지
+        grade_messages = {
+            "S": f"🏆 완벽한 수확이에요! {req.cropName}을(를) S등급으로 도감에 등록했습니다!",
+            "A": f"🥇 훌륭해요! {req.cropName}을(를) A등급으로 도감에 등록했습니다!",
+            "B": f"🥈 잘하셨어요! {req.cropName}을(를) B등급으로 도감에 등록했습니다!",
+            "C": f"🥉 좋아요! {req.cropName}을(를) C등급으로 도감에 등록했습니다!",
+            "D": f"📝 {req.cropName}을(를) D등급으로 도감에 등록했습니다. 다음엔 더 잘 키워보세요!"
+        }
+        
+        message = grade_messages.get(grade, f"{req.cropName}을(를) 도감에 등록했습니다!")
+        
+        print(f"✅ 도감 등록: {req.userId} - {req.cropName} (등급: {grade}, {collection_count}번째)")
+        
+        return AddToCollectionResponse(
+            success=True,
+            message=message,
+            grade=grade,
+            collectionCount=collection_count
+        )
+        
+    except Exception as e:
+        print(f"도감 등록 오류: {e}")
+        return AddToCollectionResponse(
+            success=False,
+            message="도감 등록에 실패했습니다.",
+            grade="",
+            collectionCount=0
+        )
+
+
+@app.get("/game/collection/{user_id}", response_model=CollectionResponse)
+def get_collection(user_id: str):
+    """사용자의 작물 도감 조회"""
+    try:
+        entries = list(crop_collection_db.find(
+            {"userId": user_id},
+            {"_id": False}
+        ).sort("harvestedAt", -1))  # 최신순 정렬
+        
+        return CollectionResponse(collection=entries)
+    except Exception as e:
+        print(f"도감 조회 오류: {e}")
+        return CollectionResponse(collection=[])
+
+
+@app.get("/game/collection/{user_id}/summary")
+def get_collection_summary(user_id: str):
+    """사용자의 도감 요약 정보 (작물별 통계)"""
+    try:
+        # 작물별 최고 등급 및 수확 횟수 집계
+        pipeline = [
+            {"$match": {"userId": user_id}},
+            {"$group": {
+                "_id": "$cropName",
+                "count": {"$sum": 1},
+                "bestGrade": {"$min": "$grade"},  # 등급이 알파벳순이므로 min이 최고
+                "bestHp": {"$max": "$finalHp"},
+                "latestHarvest": {"$max": "$harvestedAt"}
+            }},
+            {"$sort": {"latestHarvest": -1}}
+        ]
+        
+        results = list(crop_collection_db.aggregate(pipeline))
+        
+        # 전체 통계
+        total_count = crop_collection_db.count_documents({"userId": user_id})
+        unique_crops = len(results)
+        
+        return {
+            "totalHarvests": total_count,
+            "uniqueCrops": unique_crops,
+            "crops": [{
+                "cropName": r["_id"],
+                "harvestCount": r["count"],
+                "bestGrade": r["bestGrade"],
+                "bestHp": r["bestHp"],
+                "latestHarvest": r["latestHarvest"]
+            } for r in results]
+        }
+    except Exception as e:
+        print(f"도감 요약 조회 오류: {e}")
+        return {
+            "totalHarvests": 0,
+            "uniqueCrops": 0,
+            "crops": []
+        }
+
+
+@app.post("/game/harvest-and-collect")
+def harvest_and_add_to_collection(req: AddToCollectionRequest):
+    """수확하고 도감에 추가한 후 작물 삭제"""
+    try:
+        # 1. 도감에 추가
+        collection_result = add_to_collection(req)
+        
+        if not collection_result.success:
+            return {
+                "success": False,
+                "message": "도감 등록에 실패했습니다."
+            }
+        
+        # 2. 작물 삭제 (crops 배열에서)
+        game_doc = games_collection.find_one({"userId": req.userId})
+        
+        update_data = {"updatedAt": datetime.now().isoformat()}
+        
+        if game_doc:
+            # crops 배열에서 해당 작물 제거
+            if game_doc.get("crops"):
+                crops = game_doc["crops"]
+                crops = [c for c in crops if c.get("cropName") != req.cropName]
+                update_data["crops"] = crops
+            
+            # 기존 state에서도 해당 작물 제거 (하위 호환성)
+            if game_doc.get("state") and game_doc["state"].get("cropName") == req.cropName:
+                update_data["state"] = None  # 기존 state 초기화
+            
+            games_collection.update_one(
+                {"userId": req.userId},
+                {"$set": update_data}
+            )
+            
+            print(f"✅ 작물 삭제 완료: {req.userId} - {req.cropName}")
+        
+        # 3. 작물일기도 삭제 (선택적 - 도감에 기록이 남으므로)
+        # crop_diary_collection.delete_many({"userId": req.userId, "cropName": req.cropName})
+        
+        return {
+            "success": True,
+            "message": collection_result.message,
+            "grade": collection_result.grade,
+            "collectionCount": collection_result.collectionCount
+        }
+        
+    except Exception as e:
+        print(f"수확 및 도감 등록 오류: {e}")
+        return {
+            "success": False,
+            "message": "수확 처리 중 오류가 발생했습니다."
+        }
