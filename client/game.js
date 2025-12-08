@@ -89,7 +89,14 @@ async function loadCropGrowingPeriod() {
     const response = await fetch(`${API_BASE}/crops/${encodeURIComponent(gameState.cropName)}`);
     if (response.ok) {
       const data = await response.json();
-      // harvest_period가 있으면 사용, 없으면 growing_period 사용 (하위 호환성)
+      
+      // harvest_info가 있으면 전체 정보 사용 (다중 수확 포함)
+      if (data.harvest_info) {
+        cropGrowingPeriod = data.harvest_info;  // { min_harvest_day, optimal_harvest_day, harvest_count, harvest_interval }
+        return cropGrowingPeriod;
+      }
+      
+      // harvest_period가 있으면 사용 (하위 호환)
       if (data.harvest_period && Array.isArray(data.harvest_period)) {
         cropGrowingPeriod = data.harvest_period;  // [최소 수확일, 최적 수확일]
       } else if (data.growing_period) {
@@ -1762,7 +1769,21 @@ async function harvest() {
   
   // 수확 시기 확인 (최소 수확일 미만이어도 수확 가능하지만 F등급)
   const harvestPeriod = await loadCropGrowingPeriod();
-  if (harvestPeriod && Array.isArray(harvestPeriod) && harvestPeriod.length === 2) {
+  
+  // 딕셔너리 형식 (다중 수확 포함)
+  if (harvestPeriod && typeof harvestPeriod === 'object' && !Array.isArray(harvestPeriod)) {
+    const minHarvestDay = harvestPeriod.min_harvest_day;
+    const optimalHarvestDay = harvestPeriod.optimal_harvest_day;
+    
+    if (currentDay < minHarvestDay) {
+      const remainingDays = minHarvestDay - currentDay;
+      if (!confirm(`${gameState.cropName}을(를) 아직 수확 시기가 아닙니다.\n\n현재 ${currentDay}일째이며, 최소 수확일은 ${minHarvestDay}일입니다.\n${remainingDays}일 더 키우면 더 좋은 등급을 받을 수 있습니다.\n\n그래도 지금 수확하시겠습니까? (F등급으로 등록됩니다)`)) {
+        return;
+      }
+    }
+  }
+  // 배열 형식 (하위 호환)
+  else if (harvestPeriod && Array.isArray(harvestPeriod) && harvestPeriod.length === 2) {
     const [minHarvestDay, optimalHarvestDay] = harvestPeriod;
     if (currentDay < minHarvestDay) {
       const remainingDays = minHarvestDay - currentDay;
@@ -1782,7 +1803,22 @@ async function harvest() {
   }
 
   // 수확 확인 (등급으로만 판단)
-  if (!confirm(`${gameState.cropName}을(를) 수확하시겠습니까?\n\n수확하면 작물이 도감에 등록되고, 현재 키우던 작물은 사라집니다.`)) {
+  // 다중 수확 작물 확인
+  const harvestPeriod = await loadCropGrowingPeriod();
+  let harvestInfo = null;
+  if (harvestPeriod && typeof harvestPeriod === 'object' && !Array.isArray(harvestPeriod)) {
+    harvestInfo = harvestPeriod;
+  }
+  
+  // 확인 메시지 생성
+  let confirmMessage = `${gameState.cropName}을(를) 수확하시겠습니까?`;
+  if (harvestInfo && harvestInfo.harvest_count > 1) {
+    confirmMessage += `\n\n🍅 이 작물은 총 ${harvestInfo.harvest_count}회 수확 가능합니다.`;
+  } else {
+    confirmMessage += `\n\n수확하면 작물이 도감에 등록되고, 현재 키우던 작물은 사라집니다.`;
+  }
+  
+  if (!confirm(confirmMessage)) {
     return;
   }
 
@@ -1822,22 +1858,39 @@ async function harvest() {
     
     // 성공 메시지 표시
     const emoji = gradeEmoji[result.grade] || "🌾";
-    alert(`🎉 수확 완료!\n\n${result.message}\n\n${emoji} 등급: ${result.grade}\n📊 건강도: ${gameState.hp}/100\n📅 재배 일수: ${currentDay}일\n📚 도감 등록 횟수: ${result.collectionCount}회`);
     
-    // 게임 완료 처리
-    sessionStorage.setItem("lastGameResult", JSON.stringify({
-      cropName: gameState.cropName,
-      finalHp: gameState.hp,
-      totalDays: currentDay,
-      grade: result.grade,
-      success: true
-    }));
-    
-    // 현재 작물 정보 삭제
-    sessionStorage.removeItem("cropName");
+    if (result.isFinalHarvest === false && result.remainingHarvests > 0) {
+      // 다중 수확: 아직 수확 가능
+      alert(`🎉 ${result.harvestNumber}번째 수확 완료!\n\n${result.message}\n\n${emoji} 등급: ${result.grade}\n📊 건강도: ${gameState.hp}/100\n📅 재배 일수: ${currentDay}일\n\n🍅 남은 수확 횟수: ${result.remainingHarvests}회\n📅 다음 수확 가능일: ${result.nextHarvestMinDay}일`);
+      
+      // 게임 상태 업데이트 (작물 유지)
+      showFeedback(`${result.harvestNumber}번째 수확 완료! 남은 수확: ${result.remainingHarvests}회`, "success");
+      updateUI();
+    } else {
+      // 마지막 수확 또는 단일 수확
+      let finalMessage = `🎉 수확 완료!\n\n${result.message}\n\n${emoji} 등급: ${result.grade}\n📊 건강도: ${gameState.hp}/100\n📅 재배 일수: ${currentDay}일\n📚 도감 등록 횟수: ${result.collectionCount}회`;
+      
+      if (result.maxHarvests > 1) {
+        finalMessage = `🎉 마지막 수확 완료!\n\n${result.message}\n\n${emoji} 등급: ${result.grade}\n📊 건강도: ${gameState.hp}/100\n📅 재배 일수: ${currentDay}일\n📚 도감 등록 횟수: ${result.collectionCount}회\n\n🍅 총 ${result.maxHarvests}회 수확 완료!`;
+      }
+      
+      alert(finalMessage);
+      
+      // 게임 완료 처리
+      sessionStorage.setItem("lastGameResult", JSON.stringify({
+        cropName: gameState.cropName,
+        finalHp: gameState.hp,
+        totalDays: currentDay,
+        grade: result.grade,
+        success: true
+      }));
+      
+      // 현재 작물 정보 삭제
+      sessionStorage.removeItem("cropName");
 
-    // 캐릭터 선택 화면으로 이동 (새 작물 선택 또는 도감 확인)
-    window.location.href = "character-select.html";
+      // 캐릭터 선택 화면으로 이동 (새 작물 선택 또는 도감 확인)
+      window.location.href = "character-select.html";
+    }
 
   } catch (error) {
     console.error("수확 실패:", error);
