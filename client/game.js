@@ -118,8 +118,12 @@ async function calculateLevel(day) {
     return 4;
   }
   
+  // 새 형식: [최소 수확일, 최적 수확일] 배열인 경우 최적 수확일 사용
+  // 기존 형식: 숫자 하나인 경우 그대로 사용
+  const period = Array.isArray(growingPeriod) ? growingPeriod[1] : growingPeriod;
+  
   // 재배 기간을 4구간으로 나눔
-  const quarter = growingPeriod / 4;
+  const quarter = period / 4;
   
   if (day < quarter) return 1;           // 0~25%
   if (day < quarter * 2) return 2;      // 25~50%
@@ -137,7 +141,11 @@ function calculateLevelSync(day) {
     return 4;
   }
   
-  const quarter = cropGrowingPeriod / 4;
+  // 새 형식: [최소 수확일, 최적 수확일] 배열인 경우 최적 수확일 사용
+  // 기존 형식: 숫자 하나인 경우 그대로 사용
+  const period = Array.isArray(cropGrowingPeriod) ? cropGrowingPeriod[1] : cropGrowingPeriod;
+  
+  const quarter = period / 4;
   
   if (day < quarter) return 1;
   if (day < quarter * 2) return 2;
@@ -2196,8 +2204,8 @@ async function showDiary() {
       return;
     }
 
-    // 일기 목록 생성 (최신순이므로 역순으로 표시)
-    diaryEntries.innerHTML = entries.reverse().map(entry => {
+    // 일기 목록 생성 (백엔드에서 이미 최신순으로 정렬됨)
+    diaryEntries.innerHTML = entries.map(entry => {
       const hpChange = entry.hpChange || 0;
       const hpClass = hpChange > 0 ? "positive" : hpChange < 0 ? "negative" : "neutral";
       const hpText = hpChange > 0 ? `+${hpChange}` : hpChange < 0 ? `${hpChange}` : "0";

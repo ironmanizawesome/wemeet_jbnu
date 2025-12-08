@@ -1558,13 +1558,20 @@ class CropDiaryResponse(BaseModel):
 
 
 @app.get("/game/diary/{user_id}/{crop_name}", response_model=CropDiaryResponse)
-def get_crop_diary(user_id: str, crop_name: str):
-    """작물일기 조회"""
+def get_crop_diary(user_id: str, crop_name: str, game_start_time: Optional[str] = None):
+    """작물일기 조회 - gameStartTime으로 세션 구분"""
     try:
+        # 쿼리 조건 구성
+        query = {"userId": user_id, "cropName": crop_name}
+        
+        # gameStartTime이 있으면 해당 세션의 일기만 조회
+        if game_start_time:
+            query["gameStartTime"] = game_start_time
+        
         entries = list(crop_diary_collection.find(
-            {"userId": user_id, "cropName": crop_name},
+            query,
             {"_id": False}
-        ).sort("day", -1))  # 최신순 정렬
+        ).sort("day", -1))  # 최신순 정렬 (최신 일기가 위에)
         
         return CropDiaryResponse(entries=entries)
     except Exception as e:
@@ -1580,6 +1587,7 @@ class EvaluatePreviousDayRequest(BaseModel):
     currentHp: int
     actions: List[dict]  # 전날의 행동들
     previousActions: Optional[List[dict]] = None  # 그 이전 행동들
+    gameStartTime: Optional[str] = None  # 게임 시작 시간 (세션 구분용)
     weatherOnThatDay: Optional[str] = None  # 그 날의 날씨
 
 
@@ -1631,6 +1639,7 @@ def evaluate_previous_day_actions(req: EvaluatePreviousDayRequest):
                             "hpChange": auto_water_hp,
                             "actionType": "auto_water",
                             "weather": req.weatherOnThatDay,
+                            "gameStartTime": req.gameStartTime,
                             "timestamp": datetime.now().isoformat()
                         })
                 except Exception as e:
