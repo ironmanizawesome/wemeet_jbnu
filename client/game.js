@@ -79,6 +79,44 @@ const CROP_IMAGE_CONFIG = {
 // 작물별 재배 기간 캐시
 let cropGrowingPeriod = null;
 
+// 작물별 비료 주기 정보 (직접 정의)
+const FERTILIZING_INFO = {
+  "당근": "파종 후 20일 후 정도 [1회 웃거름은 20일 후, 2회 웃거름은 50일 후, 3회 웃거름은 70일 정도]",
+  "부추": "2달 하고 2주 [봄에 움트기 전 4월 상순과 6월 상순, 가을엔 9월 중순]",
+  "감자": "20~25일 정도",
+  "오이": "10~14일 정도",
+  "토마토": "2주 정도"
+};
+
+// 작물별 물주기 정보 (직접 정의)
+const WATERING_INFO = {
+  "토마토": {
+    "0~10일": "매일/겉흙 마르면",
+    "10~35일": "주 2~3회",
+    "35+": "주 2회"
+  },
+  "감자": {
+    "0~10일": "겉흙 마르면",
+    "10~35일": "주 1~2회",
+    "35+": "주 2회"
+  },
+  "오이": {
+    "0~10일": "매일/겉흙 마르면",
+    "10~35일": "주 2~3회",
+    "35+": "주 2~3회"
+  },
+  "당근": {
+    "0~10일": "2~3일마다",
+    "10~35일": "주 1~2회",
+    "35+": "주 1회"
+  },
+  "부추": {
+    "0~10일": "겉흙 마르면",
+    "10~35일": "주 2~3회",
+    "35+": "주 1~2회"
+  }
+};
+
 // 작물 재배 기간 가져오기
 async function loadCropGrowingPeriod() {
   if (cropGrowingPeriod !== null) {
@@ -1978,82 +2016,73 @@ async function getHarvestGuide() {
   }
 }
 
-// 도움말 버튼
+// 도움말 버튼 - 직접 정의된 데이터 사용
 document.getElementById("helpButton").addEventListener("click", async (e) => {
   e.preventDefault();
   
-  const harvestGuide = await getHarvestGuide();
+  const cropName = gameState.cropName;
+  const currentDay = calculateCurrentDay();
   
-  if (harvestGuide) {
-    alert(harvestGuide);
+  let helpMessage = `🌱 ${cropName} 작물 관리 가이드\n\n`;
+  
+  // 수확 시기 정보
+  helpMessage += `═══════════════════════════════\n`;
+  helpMessage += `📅 수확 시기\n`;
+  helpMessage += `═══════════════════════════════\n\n`;
+  
+  const harvestPeriod = await loadCropGrowingPeriod();
+  if (harvestPeriod && Array.isArray(harvestPeriod) && harvestPeriod.length === 2) {
+    const [minHarvestDay, optimalHarvestDay] = harvestPeriod;
+    helpMessage += `• 수확 가능: ${minHarvestDay}일부터\n`;
+    helpMessage += `• 최적 수확: ${optimalHarvestDay}일\n`;
+    helpMessage += `• 현재: ${currentDay}일차\n\n`;
   } else {
-    // 기본 가이드 표시
-    const cropData = await getCropGuide();
-    
-    let helpMessage = `🌱 ${gameState.cropName} 작물 관리 가이드\n\n`;
-    
-    helpMessage += `═══════════════════════════════\n`;
-    helpMessage += `💧 물주기 가이드\n`;
-    helpMessage += `═══════════════════════════════\n\n`;
-    
-    if (cropData && cropData.wateringInfo) {
-      const wateringInfo = cropData.wateringInfo;
-      if (wateringInfo["0~10일"]) {
-        helpMessage += `• 0~10일: ${wateringInfo["0~10일"]}\n`;
-      }
-      if (wateringInfo["10~35일"]) {
-        helpMessage += `• 10~35일: ${wateringInfo["10~35일"]}\n`;
-      }
-      if (wateringInfo["35+"]) {
-        helpMessage += `• 35일 이후: ${wateringInfo["35+"]}\n`;
-      }
-      if (Object.keys(wateringInfo).length === 0) {
-        helpMessage += `• 물주기 정보가 없습니다.\n`;
-      }
-    } else {
-      helpMessage += `• 물주기 정보를 불러올 수 없습니다.\n`;
-    }
-    
-    helpMessage += `\n`;
-    helpMessage += `═══════════════════════════════\n`;
-    helpMessage += `🌿 비료 주기 가이드\n`;
-    helpMessage += `═══════════════════════════════\n\n`;
-    
-    if (cropData && cropData.fertilizingPeriod) {
-      helpMessage += `• 비료 주기: ${cropData.fertilizingPeriod}\n`;
-    } else {
-      helpMessage += `• 비료 주기 정보가 없습니다.\n`;
-    }
-    
-    helpMessage += `\n`;
-    helpMessage += `═══════════════════════════════\n`;
-    helpMessage += `📌 기본 관리 방법\n`;
-    helpMessage += `═══════════════════════════════\n\n`;
-    helpMessage += `💧 물 주기:\n`;
-    helpMessage += `  • 적절한 시기에 물을 주세요\n`;
-    helpMessage += `  • 습한 날씨(비, 눈, 천둥)에는 물을 주지 마세요\n`;
-    helpMessage += `  • 과습은 뿌리를 썩게 할 수 있어요\n\n`;
-    helpMessage += `🌿 비료 주기:\n`;
-    helpMessage += `  • 작물에 맞는 비료를 적당한 양만 주세요\n`;
-    helpMessage += `  • 너무 많이 주면 오히려 해로울 수 있어요\n\n`;
-    helpMessage += `💊 농약 살포:\n`;
-    helpMessage += `  • 병해충이 발생했을 때 사용하세요\n`;
-    helpMessage += `  • 예방 차원에서 주기적으로 사용할 수도 있어요\n\n`;
-    
-    if (cropData && cropData.guide) {
-      helpMessage += `═══════════════════════════════\n`;
-      helpMessage += `📖 ${gameState.cropName} 상세 정보\n`;
-      helpMessage += `═══════════════════════════════\n\n`;
-      const guideLines = cropData.guide.split('\n').filter(line => line.trim());
-      const importantLines = guideLines.slice(0, 15);
-      helpMessage += importantLines.join('\n');
-      if (guideLines.length > 15) {
-        helpMessage += '\n\n... (더 자세한 정보는 게임을 진행하며 확인하세요)';
-      }
-    }
-    
-    alert(helpMessage);
+    helpMessage += `• 수확 시기 정보가 없습니다.\n\n`;
   }
+  
+  // 물주기 정보 (직접 정의된 데이터)
+  helpMessage += `═══════════════════════════════\n`;
+  helpMessage += `💧 물주기 가이드\n`;
+  helpMessage += `═══════════════════════════════\n\n`;
+  
+  const wateringInfo = WATERING_INFO[cropName];
+  if (wateringInfo) {
+    if (wateringInfo["0~10일"]) {
+      helpMessage += `• 0~10일: ${wateringInfo["0~10일"]}\n`;
+    }
+    if (wateringInfo["10~35일"]) {
+      helpMessage += `• 10~35일: ${wateringInfo["10~35일"]}\n`;
+    }
+    if (wateringInfo["35+"]) {
+      helpMessage += `• 35일 이후: ${wateringInfo["35+"]}\n`;
+    }
+  } else {
+    helpMessage += `• 물주기 정보가 없습니다.\n`;
+  }
+  
+  // 비료 주기 정보 (직접 정의된 데이터)
+  helpMessage += `\n`;
+  helpMessage += `═══════════════════════════════\n`;
+  helpMessage += `🌿 비료 주기 가이드\n`;
+  helpMessage += `═══════════════════════════════\n\n`;
+  
+  const fertilizingInfo = FERTILIZING_INFO[cropName];
+  if (fertilizingInfo) {
+    helpMessage += `• 비료 주기: ${fertilizingInfo}\n`;
+  } else {
+    helpMessage += `• 비료 주기 정보가 없습니다.\n`;
+  }
+  
+  // 기본 관리 팁
+  helpMessage += `\n`;
+  helpMessage += `═══════════════════════════════\n`;
+  helpMessage += `📌 관리 팁\n`;
+  helpMessage += `═══════════════════════════════\n\n`;
+  helpMessage += `💧 습한 날씨(비/눈)에는 물주기 금지\n`;
+  helpMessage += `🌿 비료는 적당한 간격으로\n`;
+  helpMessage += `💊 병해충 발생 시 농약 사용\n`;
+  
+  alert(helpMessage);
 });
 
 // Admin 모드 활성화/비활성화

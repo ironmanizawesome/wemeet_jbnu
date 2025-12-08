@@ -91,11 +91,17 @@ def parse_fertilizing_data() -> Dict[str, str]:
     _fertilizing_data = {}
     file_path = DATA_DIR / "fertilizing.txt"
     
+    print(f"📂 fertilizing.txt 파일 경로: {file_path}")
+    print(f"📂 파일 존재 여부: {file_path.exists()}")
+    
     if not file_path.exists():
+        print("❌ fertilizing.txt 파일이 존재하지 않습니다!")
         return _fertilizing_data
     
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
+    
+    print(f"📄 파일 내용 길이: {len(content)} 문자")
     
     crops = ["당근", "부추", "감자", "오이", "토마토"]
     current_crop = None
@@ -137,6 +143,7 @@ def parse_fertilizing_data() -> Dict[str, str]:
     if current_crop and period_info:
         _fertilizing_data[current_crop] = period_info
     
+    print(f"✅ 비료 주기 파싱 완료: {_fertilizing_data}")
     return _fertilizing_data
 
 
