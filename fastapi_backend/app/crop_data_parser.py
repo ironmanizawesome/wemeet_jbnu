@@ -16,6 +16,16 @@ _growing_period_data: Optional[Dict[str, Tuple[int, int]]] = None  # (최소 수
 _sickness_data: Optional[Dict[str, List[Dict[str, str]]]] = None
 
 
+def clear_all_cache():
+    """모든 캐시 초기화 - 파일 수정 후 호출"""
+    global _watering_data, _fertilizing_data, _growing_period_data, _sickness_data
+    _watering_data = None
+    _fertilizing_data = None
+    _growing_period_data = None
+    _sickness_data = None
+    print("✅ 모든 작물 데이터 캐시가 초기화되었습니다.")
+
+
 def parse_watering_data() -> Dict[str, Dict[str, str]]:
     """watering.txt 파싱: 작물별 물주기 빈도"""
     global _watering_data

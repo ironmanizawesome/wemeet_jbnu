@@ -19,6 +19,7 @@ from .crop_data_parser import (
     get_fertilizing_period,
     get_growing_period,
     get_sickness_info,
+    clear_all_cache,
     extract_temperature_from_text,
     extract_humidity_from_text
 )
@@ -2115,6 +2116,23 @@ def get_crop_guide(crop_name: str):
             "guide": f"{crop_name} 작물의 가이드라인을 찾을 수 없습니다.",
             "watering_info": {},
             "fertilizing_period": None
+        }
+
+
+@app.post("/admin/clear-cache")
+def admin_clear_cache():
+    """작물 데이터 캐시 초기화 (파일 수정 후 호출)"""
+    try:
+        clear_all_cache()
+        return {
+            "success": True,
+            "message": "모든 작물 데이터 캐시가 초기화되었습니다."
+        }
+    except Exception as e:
+        print(f"캐시 초기화 오류: {e}")
+        return {
+            "success": False,
+            "message": f"캐시 초기화 실패: {str(e)}"
         }
 
 
