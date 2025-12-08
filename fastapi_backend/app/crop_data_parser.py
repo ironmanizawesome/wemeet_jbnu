@@ -12,7 +12,7 @@ DATA_DIR = BASE_DIR / "data"
 # 전역 캐시
 _watering_data: Optional[Dict[str, Dict[str, str]]] = None
 _fertilizing_data: Optional[Dict[str, str]] = None
-_growing_period_data: Optional[Dict[str, dict]] = None  # 수확 시기 정보 (다중 수확 포함)
+_growing_period_data: Optional[Dict[str, Tuple[int, int]]] = None  # (최소 수확일, 최적 수확일)
 _sickness_data: Optional[Dict[str, List[Dict[str, str]]]] = None
 
 
@@ -130,19 +130,8 @@ def parse_fertilizing_data() -> Dict[str, str]:
     return _fertilizing_data
 
 
-def parse_growing_period_data() -> Dict[str, dict]:
-    """growing_period.txt 파싱: 작물별 수확 시기 정보 (다중 수확 포함)
-    
-    반환 형식:
-    {
-        "작물명": {
-            "min_harvest_day": 최소 수확일,
-            "optimal_harvest_day": 최적 수확일,
-            "harvest_count": 총 수확 횟수 (기본값 1),
-            "harvest_interval": 수확 간격 (기본값 0)
-        }
-    }
-    """
+def parse_growing_period_data() -> Dict[str, Tuple[int, int]]:
+    """growing_period.txt 파싱: 작물별 수확 시기 (최소 수확일, 최적 수확일)"""
     global _growing_period_data
     if _growing_period_data is not None:
         return _growing_period_data
@@ -156,27 +145,20 @@ def parse_growing_period_data() -> Dict[str, dict]:
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
     
+    # "작물명 최소수확일 최적수확일" 형식 파싱 (예: "당근 70 90")
     for line in content.split("\n"):
         line = line.strip()
         if not line or line.startswith("#") or "수확 시기" in line or "형식" in line or "예" in line:
             continue
         
-        parts = line.split()
-        if len(parts) >= 3:
-            crop_name = parts[0].strip()
-            min_harvest_day = int(parts[1])
-            optimal_harvest_day = int(parts[2])
+        # 작물명, 최소 수확일, 최적 수확일 추출
+        match = re.match(r"(.+?)\s+(\d+)\s+(\d+)", line)
+        if match:
+            crop_name = match.group(1).strip()
+            min_harvest_day = int(match.group(2))
+            optimal_harvest_day = int(match.group(3))
             
-            # 다중 수확 정보 (선택적)
-            harvest_count = int(parts[3]) if len(parts) > 3 else 1
-            harvest_interval = int(parts[4]) if len(parts) > 4 else 0
-            
-            _growing_period_data[crop_name] = {
-                "min_harvest_day": min_harvest_day,
-                "optimal_harvest_day": optimal_harvest_day,
-                "harvest_count": harvest_count,
-                "harvest_interval": harvest_interval
-            }
+            _growing_period_data[crop_name] = (min_harvest_day, optimal_harvest_day)
     
     return _growing_period_data
 
@@ -251,27 +233,10 @@ def get_fertilizing_period(crop_name: str) -> Optional[str]:
     return fertilizing_data.get(crop_name)
 
 
-def get_growing_period(crop_name: str) -> Optional[dict]:
-    """작물의 수확 시기 정보 반환
-    
-    반환:
-    {
-        "min_harvest_day": 최소 수확일,
-        "optimal_harvest_day": 최적 수확일,
-        "harvest_count": 총 수확 횟수,
-        "harvest_interval": 수확 간격
-    }
-    """
+def get_growing_period(crop_name: str) -> Optional[Tuple[int, int]]:
+    """작물의 수확 시기 반환: (최소 수확일, 최적 수확일)"""
     growing_period_data = parse_growing_period_data()
     return growing_period_data.get(crop_name)
-
-
-def get_harvest_period_tuple(crop_name: str) -> Optional[Tuple[int, int]]:
-    """하위 호환성을 위한 함수: (최소 수확일, 최적 수확일) 튜플 반환"""
-    harvest_info = get_growing_period(crop_name)
-    if harvest_info:
-        return (harvest_info["min_harvest_day"], harvest_info["optimal_harvest_day"])
-    return None
 
 
 def get_sickness_info(crop_name: str) -> List[Dict[str, str]]:

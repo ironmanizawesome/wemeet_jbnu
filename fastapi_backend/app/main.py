@@ -629,16 +629,15 @@ def get_crop_detail(crop_name: str):
     env_data = get_crop_environment_data(crop_name)
     
     # 수확 시기 정보 추가
-    harvest_info = get_growing_period(crop_name)
+    harvest_period = get_growing_period(crop_name)
     
     # 물주기 정보는 crop_info.txt에서 가져올 수 있지만, 여기서는 간단히 환경 정보만 반환
     result = {
         **crop,
         "environment_data": env_data,
         "watering": "작물별 물주기 정보는 상세 페이지에서 확인하세요.",
-        "growing_period": harvest_info.get("optimal_harvest_day") if harvest_info else None,  # 최적 수확일 (하위 호환성)
-        "harvest_period": [harvest_info.get("min_harvest_day"), harvest_info.get("optimal_harvest_day")] if harvest_info else None,  # [최소 수확일, 최적 수확일]
-        "harvest_info": harvest_info  # 전체 수확 정보 (다중 수확 포함)
+        "growing_period": harvest_period[1] if harvest_period else None,  # 최적 수확일 (하위 호환성)
+        "harvest_period": harvest_period  # (최소 수확일, 최적 수확일)
     }
     
     return result
@@ -2197,23 +2196,15 @@ def get_harvest_feedback(req: HarvestFeedbackRequest):
     """수확 전날 피드백 생성 (growing_period.txt 기반)"""
     try:
         # 수확 시기 확인
-        harvest_info = get_growing_period(req.cropName)
+        harvest_period = get_growing_period(req.cropName)
         
         crop_guide = get_crop_guide_for_game(req.cropName)
         
         # 수확 시기 정보 추가
         period_info = ""
-        if harvest_info:
-            min_harvest_day = harvest_info.get("min_harvest_day", 0)
-            optimal_harvest_day = harvest_info.get("optimal_harvest_day", min_harvest_day)
-            harvest_count = harvest_info.get("harvest_count", 1)
-            harvest_interval = harvest_info.get("harvest_interval", 0)
-            
+        if harvest_period:
+            min_harvest_day, optimal_harvest_day = harvest_period
             period_info = f"\n수확 가능 시기: {min_harvest_day}일부터\n최적 수확 시기: {optimal_harvest_day}일"
-            
-            if harvest_count > 1:
-                period_info += f"\n🍅 다중 수확 작물: 총 {harvest_count}회 수확 가능 (간격: {harvest_interval}일)"
-            
             if req.totalDays < min_harvest_day:
                 period_info += f"\n⚠️ 주의: 아직 수확 가능 시기가 아닙니다. (최소 {min_harvest_day}일 필요)"
             elif req.totalDays >= optimal_harvest_day:
@@ -2241,13 +2232,13 @@ def get_harvest_feedback(req: HarvestFeedbackRequest):
             message = response_text[:200] if response_text else "수확하세요!"
         
         # 등급 기반 성공/실패 판단
-        grade = calculate_grade(req.finalHp, req.totalDays, harvest_info)
+        grade = calculate_grade(req.finalHp, req.totalDays, harvest_period)
         # C 등급 이상이면 성공, D, F 등급이면 실패
         success = grade not in ["D", "F"]
         
-        if harvest_info and req.totalDays < harvest_info.get("min_harvest_day", 0):
+        if harvest_period and req.totalDays < harvest_period[0]:
             # 최소 수확일 미만이면 F등급
-            message += f" (아직 수확 시기가 아닙니다. 최소 {harvest_info.get('min_harvest_day')}일 권장)"
+            message += f" (아직 수확 시기가 아닙니다. 최소 {harvest_period[0]}일 권장)"
         
         return HarvestFeedbackResponse(
             message=message,
@@ -2257,8 +2248,8 @@ def get_harvest_feedback(req: HarvestFeedbackRequest):
     except Exception as e:
         print(f"수확 피드백 오류: {e}")
         # 예외 처리 시에도 등급 기반 판단
-        harvest_info = get_growing_period(req.cropName) if 'req' in locals() else None
-        grade = calculate_grade(req.finalHp, req.totalDays, harvest_info) if 'req' in locals() else "D"
+        harvest_period = get_growing_period(req.cropName) if 'req' in locals() else None
+        grade = calculate_grade(req.finalHp, req.totalDays, harvest_period) if 'req' in locals() else "D"
         success = grade != "D"
         return HarvestFeedbackResponse(
             message=f"수확 준비가 되었습니다! 최종 건강도: {req.finalHp}/100",
@@ -2283,7 +2274,6 @@ class AddToCollectionRequest(BaseModel):
     cropName: str
     finalHp: int
     totalDays: int
-    harvestNumber: Optional[int] = 1  # 몇 번째 수확인지 (다중 수확용)
 
 
 class AddToCollectionResponse(BaseModel):
@@ -2291,36 +2281,24 @@ class AddToCollectionResponse(BaseModel):
     message: str
     grade: str
     collectionCount: int  # 해당 작물 도감 등록 횟수
-    harvestInfo: Optional[dict] = None  # 수확 정보 (다중 수확용)
-    remainingHarvests: Optional[int] = None  # 남은 수확 횟수
 
 
 class CollectionResponse(BaseModel):
     collection: List[dict]
 
 
-def calculate_grade(final_hp: int, total_days: int, harvest_info: Optional[dict], harvest_number: int = 1) -> str:
+def calculate_grade(final_hp: int, total_days: int, harvest_period: Optional[Tuple[int, int]]) -> str:
     """수확 결과에 따른 등급 계산
     Args:
         final_hp: 최종 HP (0-100)
         total_days: 총 재배 일수
-        harvest_info: 수확 정보 딕셔너리 (min_harvest_day, optimal_harvest_day, harvest_count, harvest_interval)
-        harvest_number: 현재 몇 번째 수확인지 (1부터 시작)
+        harvest_period: (최소 수확일, 최적 수확일) 튜플
     Returns:
         등급 (S, A, B, C, D, F)
     """
-    if harvest_info:
-        min_harvest_day = harvest_info.get("min_harvest_day", 0)
-        optimal_harvest_day = harvest_info.get("optimal_harvest_day", min_harvest_day)
-        harvest_interval = harvest_info.get("harvest_interval", 0)
-        
-        # 다중 수확인 경우, n번째 수확의 최소/최적 수확일 계산
-        if harvest_number > 1 and harvest_interval > 0:
-            # n번째 수확의 최소 수확일 = 첫 수확 최소일 + (n-1) * 간격
-            min_harvest_day = min_harvest_day + (harvest_number - 1) * harvest_interval
-            optimal_harvest_day = min_harvest_day  # 다중 수확은 간격에 맞추면 최적
-        
-        # 최소 수확일 미만이면 무조건 F등급
+    # 최소 수확일 미만이면 무조건 F등급
+    if harvest_period:
+        min_harvest_day, optimal_harvest_day = harvest_period
         if total_days < min_harvest_day:
             return "F"
     
@@ -2329,26 +2307,18 @@ def calculate_grade(final_hp: int, total_days: int, harvest_info: Optional[dict]
     
     # 수확 시기 기반 점수 (0-50점)
     period_score = 0
-    if harvest_info:
-        min_harvest_day = harvest_info.get("min_harvest_day", 0)
-        optimal_harvest_day = harvest_info.get("optimal_harvest_day", min_harvest_day)
-        harvest_interval = harvest_info.get("harvest_interval", 0)
-        
-        # 다중 수확인 경우 재계산
-        if harvest_number > 1 and harvest_interval > 0:
-            min_harvest_day = min_harvest_day + (harvest_number - 1) * harvest_interval
-            optimal_harvest_day = min_harvest_day
+    if harvest_period:
+        min_harvest_day, optimal_harvest_day = harvest_period
         
         # 최적 수확일에 가까울수록 높은 점수
         if total_days >= optimal_harvest_day:
             # 최적 수확일 이상이면 만점
             period_score = 50
-        elif min_harvest_day == optimal_harvest_day:
-            # 최소 = 최적이면 만점
-            period_score = 50
         else:
             # 최소 수확일 ~ 최적 수확일 사이: 비율에 따라 점수 부여
+            # 최소일에서 최적일까지의 비율 계산 (0.0 ~ 1.0)
             progress_ratio = (total_days - min_harvest_day) / (optimal_harvest_day - min_harvest_day)
+            # 비율에 따라 0~50점 사이 점수 부여 (선형 보간)
             period_score = int(progress_ratio * 50)
     else:
         # 재배 기간 정보가 없으면 기본 점수
@@ -2374,13 +2344,10 @@ def add_to_collection(req: AddToCollectionRequest):
     """수확한 작물을 도감에 추가"""
     try:
         # 수확 시기 확인
-        harvest_info = get_growing_period(req.cropName)
-        
-        # 수확 번호 (다중 수확용)
-        harvest_number = getattr(req, 'harvestNumber', 1) if hasattr(req, 'harvestNumber') else 1
+        harvest_period = get_growing_period(req.cropName)
         
         # 등급 계산
-        grade = calculate_grade(req.finalHp, req.totalDays, harvest_info, harvest_number)
+        grade = calculate_grade(req.finalHp, req.totalDays, harvest_period)
         
         # 도감에 추가
         entry = {
@@ -2390,9 +2357,8 @@ def add_to_collection(req: AddToCollectionRequest):
             "totalDays": req.totalDays,
             "harvestedAt": datetime.now().isoformat(),
             "grade": grade,
-            "harvestInfo": harvest_info,  # 전체 수확 정보
-            "harvestNumber": harvest_number,  # 몇 번째 수확인지
-            "growingPeriod": harvest_info.get("optimal_harvest_day") if harvest_info else None  # 하위 호환성
+            "harvestPeriod": harvest_period,  # (최소 수확일, 최적 수확일)
+            "growingPeriod": harvest_period[1] if harvest_period else None  # 최적 수확일 (하위 호환성)
         }
         
         crop_collection_db.insert_one(entry)
@@ -2494,25 +2460,8 @@ def get_collection_summary(user_id: str):
 
 @app.post("/game/harvest-and-collect")
 def harvest_and_add_to_collection(req: AddToCollectionRequest):
-    """수확하고 도감에 추가 (다중 수확 지원)"""
+    """수확하고 도감에 추가한 후 작물 삭제"""
     try:
-        # 수확 정보 확인
-        harvest_info = get_growing_period(req.cropName)
-        max_harvests = harvest_info.get("harvest_count", 1) if harvest_info else 1
-        harvest_interval = harvest_info.get("harvest_interval", 0) if harvest_info else 0
-        
-        # 현재 수확 횟수 확인
-        game_doc = games_collection.find_one({"userId": req.userId})
-        current_harvest_count = 1
-        
-        if game_doc and game_doc.get("crops"):
-            current_crop = next((c for c in game_doc["crops"] if c.get("cropName") == req.cropName), None)
-            if current_crop:
-                current_harvest_count = current_crop.get("harvestCount", 0) + 1
-        
-        # 요청에 수확 번호 설정
-        req.harvestNumber = current_harvest_count
-        
         # 1. 도감에 추가
         collection_result = add_to_collection(req)
         
@@ -2522,63 +2471,37 @@ def harvest_and_add_to_collection(req: AddToCollectionRequest):
                 "message": "도감 등록에 실패했습니다."
             }
         
-        # 2. 다중 수확 처리
-        remaining_harvests = max_harvests - current_harvest_count
-        is_final_harvest = current_harvest_count >= max_harvests
+        # 2. 작물 삭제 (crops 배열에서)
+        game_doc = games_collection.find_one({"userId": req.userId})
         
         update_data = {"updatedAt": datetime.now().isoformat()}
         
         if game_doc:
-            if is_final_harvest:
-                # 마지막 수확: 작물 삭제
-                if game_doc.get("crops"):
-                    crops = game_doc["crops"]
-                    crops = [c for c in crops if c.get("cropName") != req.cropName]
-                    update_data["crops"] = crops
-                
-                if game_doc.get("state") and game_doc["state"].get("cropName") == req.cropName:
-                    update_data["state"] = None
-                
-                print(f"✅ 마지막 수확 완료, 작물 삭제: {req.userId} - {req.cropName}")
-            else:
-                # 다중 수확: 수확 횟수 업데이트, 다음 수확 준비
-                if game_doc.get("crops"):
-                    crops = game_doc["crops"]
-                    for crop in crops:
-                        if crop.get("cropName") == req.cropName:
-                            crop["harvestCount"] = current_harvest_count
-                            crop["lastHarvestDay"] = req.totalDays
-                            # 다음 수확 최소 일수 설정
-                            crop["nextHarvestMinDay"] = req.totalDays + harvest_interval
-                            break
-                    update_data["crops"] = crops
-                
-                print(f"✅ {current_harvest_count}번째 수확 완료: {req.userId} - {req.cropName} (남은 횟수: {remaining_harvests})")
+            # crops 배열에서 해당 작물 제거
+            if game_doc.get("crops"):
+                crops = game_doc["crops"]
+                crops = [c for c in crops if c.get("cropName") != req.cropName]
+                update_data["crops"] = crops
+            
+            # 기존 state에서도 해당 작물 제거 (하위 호환성)
+            if game_doc.get("state") and game_doc["state"].get("cropName") == req.cropName:
+                update_data["state"] = None  # 기존 state 초기화
             
             games_collection.update_one(
                 {"userId": req.userId},
                 {"$set": update_data}
             )
+            
+            print(f"✅ 작물 삭제 완료: {req.userId} - {req.cropName}")
         
-        # 결과 메시지 생성
-        if max_harvests > 1:
-            if is_final_harvest:
-                message = f"{collection_result.message} (마지막 수확 완료!)"
-            else:
-                message = f"{collection_result.message} ({current_harvest_count}/{max_harvests}회 수확, {remaining_harvests}회 남음)"
-        else:
-            message = collection_result.message
+        # 3. 작물일기도 삭제 (선택적 - 도감에 기록이 남으므로)
+        # crop_diary_collection.delete_many({"userId": req.userId, "cropName": req.cropName})
         
         return {
             "success": True,
-            "message": message,
+            "message": collection_result.message,
             "grade": collection_result.grade,
-            "collectionCount": collection_result.collectionCount,
-            "harvestNumber": current_harvest_count,
-            "maxHarvests": max_harvests,
-            "remainingHarvests": remaining_harvests,
-            "isFinalHarvest": is_final_harvest,
-            "nextHarvestMinDay": req.totalDays + harvest_interval if not is_final_harvest else None
+            "collectionCount": collection_result.collectionCount
         }
         
     except Exception as e:
