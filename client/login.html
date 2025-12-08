@@ -3,213 +3,299 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>로그인</title>
+  <title>농업친구들</title>
   <script src="config.js"></script>
   <style>
-    :root{
-      --bg:#0f172a;        /* slate-900 */
-      --card:#0b1224cc;    /* translucent card */
-      --text:#e5e7eb;      /* gray-200 */
-      --muted:#9ca3af;     /* gray-400 */
-      --primary:#6366f1;   /* indigo-500 */
-      --primary-600:#5458e9;
-      --ring:#93c5fd;      /* sky-300 */
-      --error:#ef4444;     /* red-500 */
-      --ok:#10b981;        /* emerald-500 */
-      --border:#233055;
+    *{box-sizing:border-box; margin:0; padding:0;}
+    html,body{
+      height:100%;
+      overflow:hidden;
     }
-    @media (prefers-color-scheme: light){
-      :root{
-        --bg:#f1f5f9;      /* slate-100 */
-        --card:#ffffffcc;
-        --text:#0f172a;    /* slate-900 */
-        --muted:#64748b;   /* slate-500 */
-        --primary:#4f46e5; /* indigo-600 */
-        --primary-600:#4338ca;
-        --ring:#2563eb;    /* blue-600 */
-        --border:#e2e8f0;  /* slate-200 */
+    body{
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
+      background: linear-gradient(180deg, #87CEEB 0%, #98D8AA 50%, #5B8C5A 100%);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      min-height:100vh;
+    }
+    
+    .cover-container {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap: 30px;
+    }
+    
+    .cover-image {
+      max-width: 90vw;
+      max-height: 60vh;
+      width: auto;
+      height: auto;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      animation: float 3s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    .login-btn {
+      padding: 18px 80px;
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: white;
+      background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 10px 30px rgba(255, 107, 107, 0.4);
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    
+    .login-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 15px 40px rgba(255, 107, 107, 0.5);
+    }
+    
+    .login-btn:active {
+      transform: scale(0.98);
+    }
+    
+    /* 로그인 모달 */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(5px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-overlay.show {
+      display: flex;
+    }
+    
+    .modal {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 25px 80px rgba(0,0,0,0.3);
+      animation: modalIn 0.3s ease;
+    }
+    
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
       }
     }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji';
-      color:var(--text);
-      background:
-        radial-gradient(1200px 600px at 10% 10%, #1e293b55, transparent 60%),
-        radial-gradient(800px 400px at 90% 20%, #312e8150, transparent 60%),
-        radial-gradient(900px 500px at 50% 100%, #0ea5e950, transparent 60%),
-        var(--bg);
-      display:grid;
-      place-items:center;
-      padding:24px;
+    
+    .modal h2 {
+      text-align: center;
+      margin-bottom: 25px;
+      color: #333;
+      font-size: 1.5rem;
     }
-    .card{
-      width:100%;
-      max-width:420px;
-      background:var(--card);
-      border:1px solid var(--border);
-      border-radius:20px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.35);
-      backdrop-filter: blur(10px);
-      padding:28px;
+    
+    .modal .field {
+      margin-bottom: 18px;
     }
-    .brand{
-      display:flex; align-items:center; gap:12px; margin-bottom:14px;
+    
+    .modal label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #555;
     }
-    .logo{
-      width:40px; height:40px; border-radius:12px;
-      background: linear-gradient(135deg,#60a5fa, #8b5cf6);
-      display:grid; place-items:center; color:white; font-weight:800;
-      letter-spacing:.5px;
-      box-shadow:0 10px 24px rgba(99,102,241,.35);
+    
+    .modal input[type="text"],
+    .modal input[type="password"] {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+      outline: none;
     }
-    h1{
-      font-size:1.25rem; margin:0 0 4px 0;
+    
+    .modal input:focus {
+      border-color: #FF6B6B;
     }
-    p.desc{
-      margin:0 0 18px 0; color:var(--muted); font-size:.95rem;
+    
+    .modal .submit-btn {
+      width: 100%;
+      padding: 14px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: white;
+      background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: all 0.2s;
     }
-    form{display:grid; gap:14px}
-    .field{display:grid; gap:6px}
-    label{font-size:.9rem}
-    .control{
-      position:relative
+    
+    .modal .submit-btn:hover {
+      opacity: 0.9;
     }
-    input[type="email"],
-    input[type="password"]{
-      width:100%;
-      appearance:none;
-      background:#0b1224;
-      color:var(--text);
-      border:1px solid var(--border);
-      border-radius:12px;
-      padding:14px 44px 14px 14px;
-      outline:none;
-      transition:border-color .2s, box-shadow .2s, background .2s;
+    
+    .modal .submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
-    @media (prefers-color-scheme: light){
-      input[type="email"], input[type="password"]{ background:#fff;}
+    
+    .modal .close-btn {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      font-size: 1.5rem;
+      color: #999;
+      cursor: pointer;
+      background: none;
+      border: none;
     }
-    input::placeholder{color:var(--muted)}
-    input:focus{
-      border-color:var(--ring);
-      box-shadow:0 0 0 4px color-mix(in oklab, var(--ring) 35%, transparent);
+    
+    .modal-content {
+      position: relative;
     }
-    .toggle{
-      position:absolute; right:10px; top:50%; transform:translateY(-50%);
-      border:none; background:transparent; color:var(--muted);
-      cursor:pointer; padding:6px; border-radius:8px;
+    
+    .error {
+      display: none;
+      background: #ffe0e0;
+      color: #c00;
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      font-size: 0.9rem;
     }
-    .toggle:focus-visible{
-      outline:2px solid var(--ring); outline-offset:2px;
+    
+    .error.show {
+      display: block;
     }
-    .row{
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
-      margin-top:4px;
+    
+    .success {
+      display: none;
+      background: #e0ffe0;
+      color: #060;
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      font-size: 0.9rem;
     }
-    .row a{ color:var(--primary); text-decoration:none; font-size:.9rem}
-    .row a:hover{ text-decoration:underline }
-    .actions{ display:grid; gap:10px; margin-top:6px}
-    .btn{
-      width:100%;
-      border:none; border-radius:12px; padding:12px 14px; cursor:pointer;
-      font-weight:700; color:white; background:var(--primary);
-      transition: transform .04s ease, box-shadow .2s, background .2s;
-      box-shadow:0 10px 22px color-mix(in oklab, var(--primary) 35%, transparent);
+    
+    .success.show {
+      display: block;
     }
-    .btn:hover{ background:var(--primary-600) }
-    .btn:active{ transform: translateY(1px) }
-    .btn.secondary{
-      background:transparent; color:var(--text); border:1px solid var(--border);
-      box-shadow:none;
+    
+    .register-link {
+      text-align: center;
+      margin-top: 20px;
+      color: #666;
+      font-size: 0.9rem;
     }
-    .hint{ color:var(--muted); font-size:.85rem; text-align:center }
-    .error{
-      display:none;
-      background: color-mix(in oklab, var(--error) 15%, transparent);
-      border:1px solid color-mix(in oklab, var(--error) 35%, transparent);
-      color:#fecaca; /* red-200 */
-      padding:10px 12px; border-radius:10px; font-size:.9rem;
+    
+    .register-link a {
+      color: #FF6B6B;
+      text-decoration: none;
+      font-weight: 600;
     }
-    .error.show{ display:block }
-    .success{
-      display:none;
-      background: color-mix(in oklab, var(--ok) 15%, transparent);
-      border:1px solid color-mix(in oklab, var(--ok) 35%, transparent);
-      color:#d1fae5;
-      padding:10px 12px; border-radius:10px; font-size:.9rem;
-    }
-    .success.show{ display:block }
-    footer{
-      margin-top:18px; text-align:center; color:var(--muted); font-size:.85rem;
+    
+    .register-link a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
-  <main class="card" aria-labelledby="title">
-    <div class="brand" aria-hidden="true">
-      <div class="logo" aria-hidden="true">🌱</div>
-      <div>
-        <h1 id="title">농업 다마고치</h1>
-        <p class="desc">게임을 시작하려면 로그인하세요.</p>
+  <div class="cover-container">
+    <img src="images/front/farming_friends_cover.png" alt="농업친구들" class="cover-image" />
+    <button class="login-btn" id="openLoginBtn">게임 시작</button>
+  </div>
+  
+  <!-- 로그인 모달 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-content">
+        <button class="close-btn" id="closeBtn">&times;</button>
+        <h2>로그인</h2>
+        
+        <div id="error" class="error" role="alert">아이디 또는 비밀번호를 확인해 주세요.</div>
+        <div id="success" class="success" role="status">로그인 성공!</div>
+        
+        <form id="loginForm">
+          <div class="field">
+            <label for="email">아이디</label>
+            <input id="email" name="email" type="text" placeholder="아이디를 입력하세요" autocomplete="username" required />
+          </div>
+          
+          <div class="field">
+            <label for="password">비밀번호</label>
+            <input id="password" name="password" type="password" placeholder="비밀번호를 입력하세요" autocomplete="current-password" required />
+          </div>
+          
+          <button class="submit-btn" type="submit" id="submitBtn">로그인</button>
+        </form>
+        
+        <div class="register-link">
+          계정이 없나요? <a href="register.html">회원가입</a>
+        </div>
       </div>
     </div>
-
-    <div id="error" class="error" role="alert">아이디 또는 비밀번호를 확인해 주세요.</div>
-    <div id="success" class="success" role="status">로그인 성공! (데모 메시지)</div>
-
-    <!-- 실제 서비스에서는 action을 백엔드 엔드포인트로 바꾸세요 -->
-    <form id="loginForm" method="POST" action="/auth/login" novalidate>
-      <div class="field">
-        <label for="email">아이디</label>
-        <div class="control">
-          <input id="email" name="email" type="text" inputmode="text"
-                 placeholder="아이디를 입력하세요" autocomplete="username" required />
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="password">비밀번호</label>
-        <div class="control">
-          <input id="password" name="password" type="password"
-                 placeholder="8자 이상" autocomplete="current-password" minlength="8" required />
-          <button class="toggle" type="button" aria-label="비밀번호 보기" id="togglePassword">보기</button>
-        </div>
-      </div>
-
-      <div class="row">
-        <label style="display:flex;align-items:center;gap:8px;font-size:.9rem;color:var(--muted)">
-          <input type="checkbox" name="remember" value="1" />
-          로그인 상태 유지
-        </label>
-        <a href="#" onclick="alert('임시 링크입니다. 실제 비밀번호 찾기 페이지로 연결하세요.'); return false;">비밀번호 찾기</a>
-      </div>
-
-      <div class="actions">
-        <button class="btn" type="submit" id="submitBtn">로그인</button>
-        <button class="btn secondary" type="button" onclick="alert('소셜 로그인 데모 버튼입니다.')">Google로 계속</button>
-      </div>
-    </form>
-
-    <footer>계정이 없나요? <a href="register.html" style="color:var(--primary)">회원가입</a></footer>
-  </main>
+  </div>
 
   <script>
   const API_BASE = window.API_BASE_URL || "http://127.0.0.1:8000";
   const form = document.getElementById('loginForm');
   const email = document.getElementById('email');
   const password = document.getElementById('password');
-  const toggle = document.getElementById('togglePassword');
   const errorBox = document.getElementById('error');
   const okBox = document.getElementById('success');
   const submitBtn = document.getElementById('submitBtn');
+  const modalOverlay = document.getElementById('modalOverlay');
+  const openLoginBtn = document.getElementById('openLoginBtn');
+  const closeBtn = document.getElementById('closeBtn');
 
-  toggle.addEventListener('click', () => {
-    const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
-    password.setAttribute('type', type);
-    toggle.textContent = type === 'password' ? '보기' : '숨기기';
+  // 모달 열기
+  openLoginBtn.addEventListener('click', () => {
+    modalOverlay.classList.add('show');
+  });
+
+  // 모달 닫기
+  closeBtn.addEventListener('click', () => {
+    modalOverlay.classList.remove('show');
+  });
+
+  // 오버레이 클릭 시 닫기
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) {
+      modalOverlay.classList.remove('show');
+    }
+  });
+
+  // ESC 키로 닫기
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modalOverlay.classList.contains('show')) {
+      modalOverlay.classList.remove('show');
+    }
   });
 
   form.addEventListener('submit', async (e) => {
@@ -218,17 +304,15 @@
     errorBox.classList.remove('show');
     okBox.classList.remove('show');
 
-    const usernameValue = email.value.trim(); // 이메일 필드를 아이디로 사용
+    const usernameValue = email.value.trim();
     const passwordValue = password.value.trim();
 
-    // 간단한 유효성 검사
     if (!usernameValue || !passwordValue) {
       errorBox.textContent = '아이디와 비밀번호를 입력하세요.';
       errorBox.classList.add('show');
       return;
     }
 
-    // 로딩 상태
     submitBtn.disabled = true;
     submitBtn.textContent = '로그인 중...';
 
@@ -247,20 +331,17 @@
       const data = await response.json();
 
       if (data.success) {
-        // 로그인 성공
         sessionStorage.setItem('userEmail', data.email || usernameValue);
         sessionStorage.setItem('userName', data.username || usernameValue);
         sessionStorage.setItem('username', data.username || usernameValue);
 
-        okBox.textContent = '로그인 성공! 대시보드로 이동합니다.';
+        okBox.textContent = '로그인 성공!';
         okBox.classList.add('show');
 
         setTimeout(() => {
-          // 캐릭터 선택 화면으로 이동
           window.location.href = 'character-select.html';
         }, 300);
       } else {
-        // 로그인 실패
         errorBox.textContent = data.message || '로그인에 실패했습니다.';
         errorBox.classList.add('show');
         submitBtn.disabled = false;
@@ -268,7 +349,7 @@
       }
     } catch (error) {
       console.error('로그인 오류:', error);
-      errorBox.textContent = '서버 연결에 실패했습니다. 서버가 실행 중인지 확인해주세요.';
+      errorBox.textContent = '서버 연결에 실패했습니다.';
       errorBox.classList.add('show');
       submitBtn.disabled = false;
       submitBtn.textContent = '로그인';
