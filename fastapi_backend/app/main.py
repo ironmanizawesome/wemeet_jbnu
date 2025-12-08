@@ -3,7 +3,7 @@ import os
 import re
 import hashlib
 import json
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -91,6 +91,7 @@ llm = ChatOpenAI(
     api_key=OPENAI_API_KEY,
     model=OPENAI_MODEL,
     temperature=0.0,  # 최대 일관성을 위해 0으로 설정 (같은 입력에 항상 같은 출력)
+    model_kwargs={"reasoning_effort": "low"},  # Fast 모드: 빠른 응답 우선 minimal low medium high중 고르기
 )
 
 system_template = """
@@ -627,15 +628,16 @@ def get_crop_detail(crop_name: str):
     # 환경 정보 추가
     env_data = get_crop_environment_data(crop_name)
     
-    # 재배 기간 정보 추가
-    growing_period = get_growing_period(crop_name)
+    # 수확 시기 정보 추가
+    harvest_period = get_growing_period(crop_name)
     
     # 물주기 정보는 crop_info.txt에서 가져올 수 있지만, 여기서는 간단히 환경 정보만 반환
     result = {
         **crop,
         "environment_data": env_data,
         "watering": "작물별 물주기 정보는 상세 페이지에서 확인하세요.",
-        "growing_period": growing_period  # 재배 기간 (일수)
+        "growing_period": harvest_period[1] if harvest_period else None,  # 최적 수확일 (하위 호환성)
+        "harvest_period": harvest_period  # (최소 수확일, 최적 수확일)
     }
     
     return result
@@ -2150,11 +2152,10 @@ harvest_system_template = """
 작물을 키우는 과정을 평가하고, 수확 전날의 피드백을 작성하세요.
 
 규칙:
-1. HP가 70 이상이면 성공적으로 키운 것으로 판단
-2. HP가 70 미만이면 실패로 판단
-3. 가이드라인을 얼마나 잘 따랐는지 평가
-4. 친근하고 다마고치 캐릭터처럼 대답
-5. 한 문단 정도의 피드백 작성
+1. 수확 등급(S, A, B, C, D)에 따라 성공/실패를 판단
+2. 가이드라인을 얼마나 잘 따랐는지 평가
+3. 친근하고 다마고치 캐릭터처럼 대답
+4. 한 문단 정도의 피드백 작성
 
 응답 형식:
 {{
@@ -2185,19 +2186,23 @@ class HarvestFeedbackResponse(BaseModel):
 def get_harvest_feedback(req: HarvestFeedbackRequest):
     """수확 전날 피드백 생성 (growing_period.txt 기반)"""
     try:
-        # 재배 기간 확인
-        growing_period = get_growing_period(req.cropName)
+        # 수확 시기 확인
+        harvest_period = get_growing_period(req.cropName)
         
         crop_guide = get_crop_guide_for_game(req.cropName)
         
-        # 재배 기간 정보 추가
+        # 수확 시기 정보 추가
         period_info = ""
-        if growing_period:
-            period_info = f"\n권장 재배 기간: {growing_period}일"
-            if req.totalDays < growing_period * 0.7:  # 70% 미만이면 너무 이른 수확
-                period_info += f"\n⚠️ 주의: 재배 기간이 권장 기간({growing_period}일)보다 짧습니다."
-            elif req.totalDays >= growing_period * 0.9:  # 90% 이상이면 적절
-                period_info += f"\n✅ 재배 기간이 적절합니다."
+        if harvest_period:
+            min_harvest_day, optimal_harvest_day = harvest_period
+            period_info = f"\n수확 가능 시기: {min_harvest_day}일부터\n최적 수확 시기: {optimal_harvest_day}일"
+            if req.totalDays < min_harvest_day:
+                period_info += f"\n⚠️ 주의: 아직 수확 가능 시기가 아닙니다. (최소 {min_harvest_day}일 필요)"
+            elif req.totalDays >= optimal_harvest_day:
+                period_info += f"\n✅ 최적 수확 시기입니다!"
+            else:
+                remaining_days = optimal_harvest_day - req.totalDays
+                period_info += f"\n💡 최적 수확 시기까지 약 {remaining_days}일 남았습니다."
         
         chain = harvest_prompt | llm
         result = chain.invoke({
@@ -2217,12 +2222,14 @@ def get_harvest_feedback(req: HarvestFeedbackRequest):
         else:
             message = response_text[:200] if response_text else "수확하세요!"
         
-        # 재배 기간 체크 추가
-        success = req.finalHp >= 70
-        if growing_period and req.totalDays < growing_period * 0.7:
-            # 너무 이른 수확은 성공으로 간주하지 않음
-            success = False
-            message += f" (재배 기간이 짧습니다. 권장: {growing_period}일)"
+        # 등급 기반 성공/실패 판단
+        grade = calculate_grade(req.finalHp, req.totalDays, harvest_period)
+        # C 등급 이상이면 성공, D, F 등급이면 실패
+        success = grade not in ["D", "F"]
+        
+        if harvest_period and req.totalDays < harvest_period[0]:
+            # 최소 수확일 미만이면 F등급
+            message += f" (아직 수확 시기가 아닙니다. 최소 {harvest_period[0]}일 권장)"
         
         return HarvestFeedbackResponse(
             message=message,
@@ -2231,9 +2238,13 @@ def get_harvest_feedback(req: HarvestFeedbackRequest):
         
     except Exception as e:
         print(f"수확 피드백 오류: {e}")
+        # 예외 처리 시에도 등급 기반 판단
+        harvest_period = get_growing_period(req.cropName) if 'req' in locals() else None
+        grade = calculate_grade(req.finalHp, req.totalDays, harvest_period) if 'req' in locals() else "D"
+        success = grade != "D"
         return HarvestFeedbackResponse(
             message=f"수확 준비가 되었습니다! 최종 건강도: {req.finalHp}/100",
-            success=req.finalHp >= 70
+            success=success
         )
 
 
@@ -2267,28 +2278,42 @@ class CollectionResponse(BaseModel):
     collection: List[dict]
 
 
-def calculate_grade(final_hp: int, total_days: int, growing_period: Optional[int]) -> str:
-    """수확 결과에 따른 등급 계산"""
-    # HP 기반 기본 점수 (0-50점)
+def calculate_grade(final_hp: int, total_days: int, harvest_period: Optional[Tuple[int, int]]) -> str:
+    """수확 결과에 따른 등급 계산
+    Args:
+        final_hp: 최종 HP (0-100)
+        total_days: 총 재배 일수
+        harvest_period: (최소 수확일, 최적 수확일) 튜플
+    Returns:
+        등급 (S, A, B, C, D, F)
+    """
+    # 최소 수확일 미만이면 무조건 F등급
+    if harvest_period:
+        min_harvest_day, optimal_harvest_day = harvest_period
+        if total_days < min_harvest_day:
+            return "F"
+    
+    # HP 기반 점수 (0-50점)
     hp_score = final_hp * 0.5
     
-    # 재배 기간 기반 점수 (0-50점)
-    period_score = 25  # 기본값
-    if growing_period:
-        # 적정 재배 기간 비율에 따라 점수 부여
-        period_ratio = total_days / growing_period
-        if period_ratio >= 0.9 and period_ratio <= 1.1:
-            # 90~110% 범위 내면 만점
+    # 수확 시기 기반 점수 (0-50점)
+    period_score = 0
+    if harvest_period:
+        min_harvest_day, optimal_harvest_day = harvest_period
+        
+        # 최적 수확일에 가까울수록 높은 점수
+        if total_days >= optimal_harvest_day:
+            # 최적 수확일 이상이면 만점
             period_score = 50
-        elif period_ratio >= 0.8 and period_ratio <= 1.2:
-            # 80~120% 범위 내면 양호
-            period_score = 40
-        elif period_ratio >= 0.7:
-            # 70% 이상이면 보통
-            period_score = 30
         else:
-            # 70% 미만이면 낮은 점수
-            period_score = 15
+            # 최소 수확일 ~ 최적 수확일 사이: 비율에 따라 점수 부여
+            # 최소일에서 최적일까지의 비율 계산 (0.0 ~ 1.0)
+            progress_ratio = (total_days - min_harvest_day) / (optimal_harvest_day - min_harvest_day)
+            # 비율에 따라 0~50점 사이 점수 부여 (선형 보간)
+            period_score = int(progress_ratio * 50)
+    else:
+        # 재배 기간 정보가 없으면 기본 점수
+        period_score = 25
     
     total_score = hp_score + period_score
     
@@ -2309,11 +2334,11 @@ def calculate_grade(final_hp: int, total_days: int, growing_period: Optional[int
 def add_to_collection(req: AddToCollectionRequest):
     """수확한 작물을 도감에 추가"""
     try:
-        # 재배 기간 확인
-        growing_period = get_growing_period(req.cropName)
+        # 수확 시기 확인
+        harvest_period = get_growing_period(req.cropName)
         
         # 등급 계산
-        grade = calculate_grade(req.finalHp, req.totalDays, growing_period)
+        grade = calculate_grade(req.finalHp, req.totalDays, harvest_period)
         
         # 도감에 추가
         entry = {
@@ -2323,7 +2348,8 @@ def add_to_collection(req: AddToCollectionRequest):
             "totalDays": req.totalDays,
             "harvestedAt": datetime.now().isoformat(),
             "grade": grade,
-            "growingPeriod": growing_period
+            "harvestPeriod": harvest_period,  # (최소 수확일, 최적 수확일)
+            "growingPeriod": harvest_period[1] if harvest_period else None  # 최적 수확일 (하위 호환성)
         }
         
         crop_collection_db.insert_one(entry)
@@ -2340,7 +2366,8 @@ def add_to_collection(req: AddToCollectionRequest):
             "A": f"🥇 훌륭해요! {req.cropName}을(를) A등급으로 도감에 등록했습니다!",
             "B": f"🥈 잘하셨어요! {req.cropName}을(를) B등급으로 도감에 등록했습니다!",
             "C": f"🥉 좋아요! {req.cropName}을(를) C등급으로 도감에 등록했습니다!",
-            "D": f"📝 {req.cropName}을(를) D등급으로 도감에 등록했습니다. 다음엔 더 잘 키워보세요!"
+            "D": f"📝 {req.cropName}을(를) D등급으로 도감에 등록했습니다. 다음엔 더 잘 키워보세요!",
+            "F": f"⚠️ {req.cropName}을(를) F등급으로 도감에 등록했습니다. 아직 수확 시기가 아니었지만 기록으로 남겼습니다. 다음엔 더 오래 키워보세요!"
         }
         
         message = grade_messages.get(grade, f"{req.cropName}을(를) 도감에 등록했습니다!")

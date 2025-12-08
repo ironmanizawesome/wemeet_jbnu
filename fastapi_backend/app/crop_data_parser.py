@@ -12,7 +12,7 @@ DATA_DIR = BASE_DIR / "data"
 # 전역 캐시
 _watering_data: Optional[Dict[str, Dict[str, str]]] = None
 _fertilizing_data: Optional[Dict[str, str]] = None
-_growing_period_data: Optional[Dict[str, int]] = None
+_growing_period_data: Optional[Dict[str, Tuple[int, int]]] = None  # (최소 수확일, 최적 수확일)
 _sickness_data: Optional[Dict[str, List[Dict[str, str]]]] = None
 
 
@@ -130,8 +130,8 @@ def parse_fertilizing_data() -> Dict[str, str]:
     return _fertilizing_data
 
 
-def parse_growing_period_data() -> Dict[str, int]:
-    """growing_period.txt 파싱: 작물별 재배 기간 (일수로 변환)"""
+def parse_growing_period_data() -> Dict[str, Tuple[int, int]]:
+    """growing_period.txt 파싱: 작물별 수확 시기 (최소 수확일, 최적 수확일)"""
     global _growing_period_data
     if _growing_period_data is not None:
         return _growing_period_data
@@ -145,26 +145,20 @@ def parse_growing_period_data() -> Dict[str, int]:
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
     
-    # "토마토 촉성재배 1년" 형식 파싱
+    # "작물명 최소수확일 최적수확일" 형식 파싱 (예: "당근 70 90")
     for line in content.split("\n"):
         line = line.strip()
-        if not line or "재배 개월수" in line:
+        if not line or line.startswith("#") or "수확 시기" in line or "형식" in line or "예" in line:
             continue
         
-        # 작물명과 기간 추출
-        match = re.match(r"(.+?)\s+(?:촉성재배|봄 재배|노지재배)?\s*(\d+)\s*(년|개월)", line)
+        # 작물명, 최소 수확일, 최적 수확일 추출
+        match = re.match(r"(.+?)\s+(\d+)\s+(\d+)", line)
         if match:
             crop_name = match.group(1).strip()
-            period = int(match.group(2))
-            unit = match.group(3)
+            min_harvest_day = int(match.group(2))
+            optimal_harvest_day = int(match.group(3))
             
-            # 일수로 변환 (1년 = 365일, 1개월 = 30일)
-            if unit == "년":
-                days = period * 365
-            else:  # 개월
-                days = period * 30
-            
-            _growing_period_data[crop_name] = days
+            _growing_period_data[crop_name] = (min_harvest_day, optimal_harvest_day)
     
     return _growing_period_data
 
@@ -239,8 +233,8 @@ def get_fertilizing_period(crop_name: str) -> Optional[str]:
     return fertilizing_data.get(crop_name)
 
 
-def get_growing_period(crop_name: str) -> Optional[int]:
-    """작물의 재배 기간 (일수) 반환"""
+def get_growing_period(crop_name: str) -> Optional[Tuple[int, int]]:
+    """작물의 수확 시기 반환: (최소 수확일, 최적 수확일)"""
     growing_period_data = parse_growing_period_data()
     return growing_period_data.get(crop_name)
 

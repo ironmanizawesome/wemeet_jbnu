@@ -89,14 +89,20 @@ async function loadCropGrowingPeriod() {
     const response = await fetch(`${API_BASE}/crops/${encodeURIComponent(gameState.cropName)}`);
     if (response.ok) {
       const data = await response.json();
-      cropGrowingPeriod = data.growing_period || null;
+      // harvest_period가 있으면 사용, 없으면 growing_period 사용 (하위 호환성)
+      if (data.harvest_period && Array.isArray(data.harvest_period)) {
+        cropGrowingPeriod = data.harvest_period;  // [최소 수확일, 최적 수확일]
+      } else if (data.growing_period) {
+        // 하위 호환성: 기존 형식이면 최적 수확일로 사용
+        cropGrowingPeriod = [Math.floor(data.growing_period * 0.7), data.growing_period];
+      }
       return cropGrowingPeriod;
     }
   } catch (error) {
     console.error("재배 기간 가져오기 실패:", error);
   }
   
-  // 기본값: 150일 (5개월)
+  // 기본값: [105일, 150일] (5개월 기준)
   return 150;
 }
 
@@ -1746,23 +1752,28 @@ async function harvest() {
   
   const currentDay = calculateCurrentDay();
   
-  // 재배 기간 확인
-  const growingPeriod = await loadCropGrowingPeriod();
-  if (growingPeriod) {
-    const harvestThreshold = growingPeriod * 0.9;
+  // 수확 시기 확인 (최소 수확일 미만이어도 수확 가능하지만 F등급)
+  const harvestPeriod = await loadCropGrowingPeriod();
+  if (harvestPeriod && Array.isArray(harvestPeriod) && harvestPeriod.length === 2) {
+    const [minHarvestDay, optimalHarvestDay] = harvestPeriod;
+    if (currentDay < minHarvestDay) {
+      const remainingDays = minHarvestDay - currentDay;
+      if (!confirm(`${gameState.cropName}을(를) 아직 수확 시기가 아닙니다.\n\n현재 ${currentDay}일째이며, 최소 수확일은 ${minHarvestDay}일입니다.\n${remainingDays}일 더 키우면 더 좋은 등급을 받을 수 있습니다.\n\n그래도 지금 수확하시겠습니까? (F등급으로 등록됩니다)`)) {
+        return;
+      }
+    }
+  } else if (harvestPeriod && typeof harvestPeriod === 'number') {
+    // 하위 호환성: 숫자면 기존 로직 사용
+    const harvestThreshold = harvestPeriod * 0.9;
     if (currentDay < harvestThreshold) {
       const remainingDays = Math.ceil(harvestThreshold - currentDay);
-      showFeedback(`아직 수확 시기가 아닙니다. 약 ${remainingDays}일 후에 수확할 수 있습니다.`, "error");
-      return;
+      if (!confirm(`아직 수확 시기가 아닙니다. 약 ${remainingDays}일 후에 수확할 수 있습니다.\n\n그래도 지금 수확하시겠습니까?`)) {
+        return;
+      }
     }
   }
-  
-  if (gameState.hp < 70) {
-    showFeedback("작물 건강도가 70 미만입니다. 더 잘 키워주세요!", "error");
-    return;
-  }
 
-  // 수확 확인
+  // 수확 확인 (등급으로만 판단)
   if (!confirm(`${gameState.cropName}을(를) 수확하시겠습니까?\n\n수확하면 작물이 도감에 등록되고, 현재 키우던 작물은 사라집니다.`)) {
     return;
   }
@@ -1797,7 +1808,8 @@ async function harvest() {
       "A": "🥇",
       "B": "🥈",
       "C": "🥉",
-      "D": "📝"
+      "D": "📝",
+      "F": "⚠️"
     };
     
     // 성공 메시지 표시
@@ -1861,14 +1873,28 @@ async function getHarvestGuide() {
     harvestMessage += `📅 수확 시기\n`;
     harvestMessage += `═══════════════════════════════\n\n`;
     
-    if (growingPeriod) {
-      const harvestThreshold = Math.ceil(growingPeriod * 0.9);
-      harvestMessage += `• 재배 기간: 약 ${growingPeriod}일\n`;
+    const harvestPeriod = await loadCropGrowingPeriod();
+    if (harvestPeriod && Array.isArray(harvestPeriod) && harvestPeriod.length === 2) {
+      const [minHarvestDay, optimalHarvestDay] = harvestPeriod;
+      harvestMessage += `• 수확 가능 시기: ${minHarvestDay}일부터\n`;
+      harvestMessage += `• 최적 수확 시기: ${optimalHarvestDay}일\n`;
+      harvestMessage += `• 현재 재배 일수: ${currentDay}일\n\n`;
+      
+      if (currentDay < minHarvestDay) {
+        harvestMessage += `⚠️ 아직 수확할 수 없습니다. ${minHarvestDay - currentDay}일 더 키워주세요.\n\n`;
+      } else if (currentDay >= optimalHarvestDay) {
+        harvestMessage += `✅ 최적 수확 시기입니다!\n\n`;
+      } else {
+        harvestMessage += `💡 최적 수확 시기까지 ${optimalHarvestDay - currentDay}일 남았습니다.\n\n`;
+      }
+    } else if (harvestPeriod && typeof harvestPeriod === 'number') {
+      // 하위 호환성
+      const harvestThreshold = Math.ceil(harvestPeriod * 0.9);
+      harvestMessage += `• 재배 기간: 약 ${harvestPeriod}일\n`;
       harvestMessage += `• 수확 가능 시기: ${harvestThreshold}일 이후\n`;
-      harvestMessage += `• 권장 수확 시기: ${growingPeriod}일 이후\n`;
       harvestMessage += `• 현재 재배 일수: ${currentDay}일\n\n`;
     } else {
-      harvestMessage += `• 재배 기간 정보를 불러올 수 없습니다.\n\n`;
+      harvestMessage += `• 수확 시기 정보를 불러올 수 없습니다.\n\n`;
     }
     
     harvestMessage += `═══════════════════════════════\n`;
@@ -1908,8 +1934,9 @@ async function getHarvestGuide() {
     harvestMessage += `═══════════════════════════════\n`;
     harvestMessage += `✅ 수확 조건\n`;
     harvestMessage += `═══════════════════════════════\n\n`;
-    harvestMessage += `• 재배 기간의 90% 이상 경과\n`;
-    harvestMessage += `• 작물 건강도 70 이상\n`;
+    harvestMessage += `• 최소 수확일 이상 경과\n`;
+    harvestMessage += `• 수확 시기와 HP 상태에 따라 등급(S, A, B, C, D, F)이 결정됩니다\n`;
+    harvestMessage += `• 최적 수확 시기에 가까울수록, HP가 높을수록 높은 등급을 받습니다\n`;
     harvestMessage += `• 위 조건을 만족하면 수확 버튼을 눌러 수확하세요!\n\n`;
     
     if (cropData && cropData.guide) {
