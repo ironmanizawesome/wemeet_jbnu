@@ -10,7 +10,7 @@
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-5-mini
 MONGO_URI=mongodb://localhost:27017
 MONGO_DB_NAME=chatbot_db
 ```

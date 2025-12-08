@@ -55,7 +55,7 @@ python -m uvicorn fastapi_backend.app.main:app --reload --host 0.0.0.0 --port 80
 `fastapi_backend/.env` 파일 생성:
 ```env
 OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-5-mini
 MONGO_URI=mongodb://localhost:27017
 MONGO_DB_NAME=chatbot_db
 ```
